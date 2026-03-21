@@ -1,0 +1,9 @@
+.idea/
+__pycache__/
+*.pyc
+dist/
+*.egg-info/
+.venv/
+.pytest_cache/
+.hypothesis/
+.python-version
