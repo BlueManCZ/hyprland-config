@@ -11,11 +11,11 @@ from typing import Self
 
 _RGBA_RE = re.compile(r"^rgba\(([0-9a-fA-F]{8})\)$")
 _RGB_RE = re.compile(r"^rgb\(([0-9a-fA-F]{6})\)$")
-_HEX_RE = re.compile(r"^0x([0-9a-fA-F]{8})$")
+_HEX_ARGB_RE = re.compile(r"^(?:0x)?([0-9a-fA-F]{8})$")
 _ANGLE_RE = re.compile(r"(\d+)deg$")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Color:
     """An RGBA color value.
 
@@ -39,6 +39,7 @@ class Color:
         - ``rgba(rrggbbaa)`` — 8-digit hex with alpha
         - ``rgb(rrggbb)`` — 6-digit hex, alpha defaults to 255
         - ``0xAARRGGBB`` — 8-digit hex, alpha in high byte
+        - ``AARRGGBB`` — bare 8-digit hex (IPC format), alpha in high byte
 
         Raises ValueError if the text doesn't match any format.
         """
@@ -54,7 +55,7 @@ class Color:
             h = m.group(1)
             return cls(r=int(h[0:2], 16), g=int(h[2:4], 16), b=int(h[4:6], 16))
 
-        m = _HEX_RE.match(text)
+        m = _HEX_ARGB_RE.match(text)
         if m:
             h = m.group(1)
             return cls(a=int(h[0:2], 16), r=int(h[2:4], 16), g=int(h[4:6], 16), b=int(h[6:8], 16))
@@ -78,7 +79,7 @@ class Color:
         return self.to_rgba()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Gradient:
     """A gradient specification: one or more colors with an optional angle.
 
@@ -124,7 +125,7 @@ class Gradient:
         return " ".join(parts)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Vec2:
     """A 2D coordinate pair.
 

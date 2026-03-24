@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 
+from hyprland_config._binds import BindData, parse_bind_line
 from hyprland_config._expr import ExprError
 from hyprland_config._expr import evaluate as evaluate_expression
 from hyprland_config._migrate import (
@@ -26,9 +27,16 @@ from hyprland_config._model import (
     Source,
     Variable,
 )
-from hyprland_config._parser import ParseError, is_keyword, parse_file, parse_string
+from hyprland_config._parser import (
+    ParseError,
+    is_bind_keyword,
+    is_keyword,
+    parse_file,
+    parse_string,
+)
 from hyprland_config._source import SourceCycleError
 from hyprland_config._types import Color, Gradient, Vec2
+from hyprland_config._values import coerce_config_value, value_to_conf
 from hyprland_config._writer import atomic_write
 
 
@@ -93,6 +101,7 @@ def load(
 
 __all__ = [
     "Assignment",
+    "BindData",
     "BlankLine",
     "Color",
     "Comment",
@@ -115,11 +124,15 @@ __all__ = [
     "Vec2",
     "atomic_write",
     "check_deprecated",
+    "coerce_config_value",
     "evaluate_expression",
+    "is_bind_keyword",
     "is_keyword",
     "load",
     "migrate",
+    "parse_bind_line",
     "parse_to_dict",
     "parse_file",
     "parse_string",
+    "value_to_conf",
 ]

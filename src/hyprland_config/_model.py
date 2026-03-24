@@ -193,22 +193,37 @@ class Document:
         else:
             yield self
 
-    def _iter_lines_recursive(self) -> Iterator[tuple["Document", Line]]:
+    def _iter_lines_recursive(
+        self,
+        exclude_sources: frozenset[Path] = frozenset(),
+    ) -> Iterator[tuple["Document", Line]]:
         """Yield (document, line) pairs in Hyprland evaluation order.
 
         Source directives are expanded at the point they appear, so a sourced
         document's lines come at the position of the source directive in the
         parent. This matches Hyprland's "last value wins" semantics correctly.
+
+        *exclude_sources*: resolved paths whose Source documents should be
+        skipped during traversal. The Source line itself is still yielded,
+        but its sub-documents are not expanded.
         """
         for line in self.lines:
             if isinstance(line, Source):
                 yield self, line
+                if exclude_sources and any(
+                    rp.resolve() in exclude_sources for rp in line.resolved_paths
+                ):
+                    continue
                 for sub in line.documents:
-                    yield from sub._iter_lines_recursive()
+                    yield from sub._iter_lines_recursive(exclude_sources)
             else:
                 yield self, line
 
-    def _iter_lines(self, recursive: bool | None) -> Iterator[tuple["Document", Line]]:
+    def _iter_lines(
+        self,
+        recursive: bool | None,
+        exclude_sources: frozenset[Path] = frozenset(),
+    ) -> Iterator[tuple["Document", Line]]:
         """Yield (document, line) pairs in correct evaluation order.
 
         When recursive, source directives are expanded at the point they
@@ -216,7 +231,7 @@ class Document:
         only this document's lines.
         """
         if self._resolve_recursive(recursive):
-            yield from self._iter_lines_recursive()
+            yield from self._iter_lines_recursive(exclude_sources)
         else:
             for line in self.lines:
                 yield self, line
@@ -225,13 +240,14 @@ class Document:
         self,
         predicate: Callable[[Line], bool],
         recursive: bool | None = None,
+        exclude_sources: frozenset[Path] = frozenset(),
     ) -> tuple["Document", Line] | None:
         """Find the last line matching predicate in evaluation order.
 
         Returns (owning_document, line) or None.
         """
         result: tuple["Document", Line] | None = None
-        for doc, line in self._iter_lines(recursive):
+        for doc, line in self._iter_lines(recursive, exclude_sources):
             if predicate(line):
                 result = (doc, line)
         return result
@@ -250,13 +266,22 @@ class Document:
     # -- Query API --
 
     def get(
-        self, key: str, default: str | None = None, *, recursive: bool | None = None
+        self,
+        key: str,
+        default: str | None = None,
+        *,
+        recursive: bool | None = None,
+        exclude_sources: frozenset[Path] = frozenset(),
     ) -> str | None:
         """Get the value of a config option by full_key.
 
+        *exclude_sources*: resolved paths whose Source documents should be
+        skipped during resolution. Use this to answer "what would this key
+        resolve to without source X?".
+
         Returns the value as a string, or default if not found.
         """
-        node = self.find(key, recursive=recursive)
+        node = self.find(key, recursive=recursive, exclude_sources=exclude_sources)
         if node is None:
             return default
         return node.value
@@ -265,7 +290,13 @@ class Document:
         """Get all values for a key. Useful for repeated keywords like bind, env, monitor."""
         return [line.value for line in self.find_all(key, recursive=recursive)]
 
-    def find(self, key: str, *, recursive: bool | None = None) -> Assignment | Keyword | None:
+    def find(
+        self,
+        key: str,
+        *,
+        recursive: bool | None = None,
+        exclude_sources: frozenset[Path] = frozenset(),
+    ) -> Assignment | Keyword | None:
         """Find the last Assignment or Keyword matching a full_key or glob pattern.
 
         Supports glob patterns (``*``, ``?``, ``[…]``) for matching keys:
@@ -275,7 +306,7 @@ class Document:
         recursive defaults to True when sources were followed during parsing.
         Walks lines in Hyprland evaluation order — last match wins.
         """
-        result = self._find_last(_kv_predicate(key), recursive)
+        result = self._find_last(_kv_predicate(key), recursive, exclude_sources)
         if result is None:
             return None
         return cast(Assignment | Keyword, result[1])

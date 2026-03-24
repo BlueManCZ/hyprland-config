@@ -63,6 +63,11 @@ def is_keyword(name: str) -> bool:
     return name in _STATIC_KEYWORD_NAMES or _BIND_RE.match(name) is not None
 
 
+def is_bind_keyword(name: str) -> bool:
+    """Return True if *name* is a bind-variant keyword (bind, binde, bindm …)."""
+    return _BIND_RE.match(name) is not None
+
+
 # Match one-line block: "name { key = value }"
 _ONELINE_BLOCK_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)(?:\[([^\]]*)\])?\s*\{(.+)\}\s*$")
 
