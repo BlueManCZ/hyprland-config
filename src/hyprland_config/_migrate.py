@@ -310,9 +310,11 @@ def _migrate_blur_options(doc: Document) -> bool:
     return _transform_lines(doc, lambda ln: ln.full_key in renames, transform)
 
 
+_V2_PREFIXES = ("title:", "class:", "xwayland:", "floating:", "fullscreen:")
+
+
 def _migrate_windowrule_v1_to_v2(doc: Document) -> bool:
     """Convert windowrule (v1) to windowrulev2 syntax."""
-    _V2_PREFIXES = ("title:", "class:", "xwayland:", "floating:", "fullscreen:")
 
     def predicate(line: KeyValueLine) -> bool:
         if line.key != "windowrule":

@@ -138,37 +138,31 @@ class TestExpressionWithVariables:
     """Test that expressions work correctly after variable expansion."""
 
     def test_variable_in_expression(self):
-
         doc = parse_string("$gap = 5\n")
         result = doc.expand("{{$gap + 2}}")
         assert result == "7"
 
     def test_expression_in_config_value(self):
-
         doc = parse_string("$gap = 5\ngeneral {\n    gaps_in = {{$gap + 2}}\n}\n")
         flat = doc.to_dict()
         assert flat["general:gaps_in"] == "7"
 
     def test_multiple_variables_in_expression(self):
-
         doc = parse_string("$a = 10\n$b = 3\n")
         result = doc.expand("{{$a * $b}}")
         assert result == "30"
 
     def test_expression_with_parentheses_and_vars(self):
-
         doc = parse_string("$gap = 5\n$mult = 2\n")
         result = doc.expand("{{($gap + 3) * $mult}}")
         assert result == "16"
 
     def test_escaped_expression_with_variables(self):
-
         doc = parse_string("$gap = 5\n")
         result = doc.expand("\\{{$gap + 2}}")
         assert result == "{{5 + 2}}"
 
     def test_escaped_vs_real_in_to_dict(self):
-
         doc = parse_string(
             "$gap = 5\ngeneral {\n    gaps_in = {{$gap + 2}}\n    label = \\{{$gap + 2}}\n}\n"
         )

@@ -4,8 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from hyprland_config import ErrorLine, load, parse_string
-from hyprland_config._parser import ParseError, parse_file
+from hyprland_config import ErrorLine, ParseError, load, parse_file, parse_string
 
 
 class TestLenientParsing:

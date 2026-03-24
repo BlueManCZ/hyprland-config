@@ -276,7 +276,9 @@ class Document:
         Walks lines in Hyprland evaluation order — last match wins.
         """
         result = self._find_last(_kv_predicate(key), recursive)
-        return result[1] if result is not None else None  # type: ignore[return-value]
+        if result is None:
+            return None
+        return cast(Assignment | Keyword, result[1])
 
     def find_all(self, key: str, *, recursive: bool | None = None) -> list[Assignment | Keyword]:
         """Find all Assignment or Keyword lines matching a full_key or glob pattern.
@@ -316,7 +318,8 @@ class Document:
         )
 
         if result is not None:
-            target_doc, target_var = result[0], cast(Variable, result[1])
+            target_doc, target_line = result
+            target_var = cast(Variable, target_line)
             target_var.value = value
             target_var.raw = f"{target_var.indent}${name} = {value}\n"
             target_doc._mark_dirty()
