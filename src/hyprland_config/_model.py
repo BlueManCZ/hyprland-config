@@ -124,15 +124,38 @@ class ErrorLine(Line):
     message: str = ""
 
 
+def _match_key(ln: Line, key: str) -> bool:
+    """Match a KeyValueLine by key.
+
+    Keywords (bind, monitor, animation, …) match on their bare ``key``
+    OR ``full_key`` because Hyprland ignores section context for these.
+    This means ``find("animation")`` matches ``animation`` inside an
+    ``animations { }`` section, and ``find("animations:animation")``
+    also works.  Assignments match on ``full_key`` only.
+    """
+    if not isinstance(ln, KeyValueLine):
+        return False
+    if isinstance(ln, Keyword):
+        return ln.key == key or ln.full_key == key
+    return ln.full_key == key
+
+
 def _kv_matches_key(key: str) -> Callable[[Line], bool]:
-    """Build a predicate that matches KeyValueLine nodes with a given full_key."""
-    return lambda ln: isinstance(ln, KeyValueLine) and ln.full_key == key
+    """Build a predicate that matches KeyValueLine nodes by key."""
+    return lambda ln: _match_key(ln, key)
 
 
 def _kv_predicate(key: str) -> Callable[[Line], bool]:
     """Build a predicate for matching KeyValueLine nodes by key or glob pattern."""
     if _has_glob_chars(key):
-        return lambda ln: isinstance(ln, KeyValueLine) and fnmatch(ln.full_key, key)
+        return lambda ln: (
+            isinstance(ln, KeyValueLine)
+            and (
+                (fnmatch(ln.key, key) or fnmatch(ln.full_key, key))
+                if isinstance(ln, Keyword)
+                else fnmatch(ln.full_key, key)
+            )
+        )
     return _kv_matches_key(key)
 
 
@@ -311,12 +334,21 @@ class Document:
             return None
         return cast(Assignment | Keyword, result[1])
 
-    def find_all(self, key: str, *, recursive: bool | None = None) -> list[Assignment | Keyword]:
+    def find_all(
+        self,
+        key: str,
+        *,
+        recursive: bool | None = None,
+        exclude_sources: frozenset[Path] = frozenset(),
+    ) -> list[Assignment | Keyword]:
         """Find all Assignment or Keyword lines matching a full_key or glob pattern.
 
         Supports glob patterns (``*``, ``?``, ``[…]``) for matching keys:
         - ``"input:touchpad:*"`` — all touchpad settings
         - ``"bind*"`` — all bind variants
+
+        *exclude_sources*: resolved paths whose Source documents should be
+        skipped during traversal.
 
         recursive defaults to True when sources were followed during parsing.
         Returns results in Hyprland evaluation order.
@@ -324,7 +356,11 @@ class Document:
         predicate = _kv_predicate(key)
         return cast(
             list[Assignment | Keyword],
-            [line for _doc, line in self._iter_lines(recursive) if predicate(line)],
+            [
+                line
+                for _doc, line in self._iter_lines(recursive, exclude_sources)
+                if predicate(line)
+            ],
         )
 
     def expand(self, text: str) -> str:
@@ -383,10 +419,10 @@ class Document:
 
         if result is not None:
             target_doc, target_line = result
-            target_line = cast(KeyValueLine, target_line)
-            target_line.value = value
-            target_line.raw = _format_kv_line(
-                target_line.indent, target_line.key, value, target_line.inline_comment
+            kv_line = cast(KeyValueLine, target_line)
+            kv_line.value = value
+            kv_line.raw = _format_kv_line(
+                kv_line.indent, kv_line.key, value, kv_line.inline_comment
             )
             target_doc._mark_dirty()
         else:
@@ -427,14 +463,14 @@ class Document:
         )
 
         if result is not None:
-            target_doc, target_node = result
-            target_node = cast(Keyword, target_node)
-            idx = next(i for i, ln in enumerate(target_doc.lines) if ln is target_node)
+            target_doc, target_line = result
+            existing = cast(Keyword, target_line)
+            idx = next(i for i, ln in enumerate(target_doc.lines) if ln is existing)
             node = Keyword(
-                raw=_format_kv_line(target_node.indent, keyword, args),
+                raw=_format_kv_line(existing.indent, keyword, args),
                 key=keyword,
                 value=args,
-                full_key=target_node.full_key,
+                full_key=existing.full_key,
             )
             target_doc.lines.insert(idx + 1, node)
             target_doc._mark_dirty()

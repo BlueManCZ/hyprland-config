@@ -1,13 +1,12 @@
 """Config value conversion — between Python types and Hyprland config strings."""
 
 import re
-from typing import Any
 
 # Matches bare hex color tokens like "ff1a2b3c" (6 or 8 hex digits, no 0x prefix).
 _GRADIENT_HEX_RE = re.compile(r"^[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$")
 
 
-def coerce_config_value(value_str: str, type_name: str) -> Any:
+def coerce_config_value(value_str: str, type_name: str) -> bool | int | float | str:
     """Convert a config file string to the appropriate Python type.
 
     *type_name* is one of ``"bool"``, ``"int"``, ``"float"``, or any
@@ -17,16 +16,16 @@ def coerce_config_value(value_str: str, type_name: str) -> Any:
     try:
         if type_name == "bool":
             return value_str.lower() in ("true", "1", "yes")
-        elif type_name == "int":
+        elif type_name in ("int", "choice"):
             return int(value_str)
         elif type_name == "float":
             return float(value_str)
-    except (ValueError, AttributeError):
+    except ValueError:
         pass
     return value_str
 
 
-def value_to_conf(value: Any) -> str:
+def value_to_conf(value: bool | int | float | str) -> str:
     """Convert a Python value to Hyprland config format.
 
     Bools become ``"0"`` / ``"1"`` (IPC-style), not ``"true"`` / ``"false"``

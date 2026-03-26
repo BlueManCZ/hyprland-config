@@ -90,6 +90,39 @@ class TestDocumentAPI:
         doc = parse_string("key = value\n")
         assert doc.get_all("bind") == []
 
+    # -- Keywords match regardless of section context --
+
+    def test_find_keyword_in_section_by_bare_key(self):
+        """Keywords inside sections match by bare key (Hyprland ignores context)."""
+        doc = parse_string("animations {\n    animation = windows, 1, 3, default\n}\n")
+        found = doc.find("animation")
+        assert found is not None
+        assert found.value == "windows, 1, 3, default"
+
+    def test_find_all_keyword_across_sections(self):
+        """find_all collects keywords both inside and outside sections."""
+        doc = parse_string(
+            "animation = fade, 1, 5, default\n"
+            "animations {\n    animation = windows, 1, 3, default\n}\n"
+        )
+        found = doc.find_all("animation")
+        assert len(found) == 2
+        names = [kw.value.split(",")[0].strip() for kw in found]
+        assert "fade" in names
+        assert "windows" in names
+
+    def test_find_keyword_in_section_by_full_key(self):
+        """Section-qualified lookup still works for backwards compat."""
+        doc = parse_string("animations {\n    animation = windows, 1, 3, default\n}\n")
+        found = doc.find("animations:animation")
+        assert found is not None
+
+    def test_assignment_not_matched_by_bare_key(self):
+        """Assignments still require full section-qualified key."""
+        doc = parse_string("general {\n    gaps_in = 5\n}\n")
+        assert doc.find("gaps_in") is None
+        assert doc.find("general:gaps_in") is not None
+
 
 # ---------------------------------------------------------------------------
 # Mutation API
@@ -210,6 +243,12 @@ class TestRemove:
         doc = parse_string("animations {\n    animation = windows, 1, 3, default\n}\n")
         doc.remove("animations:animation")
         assert doc.find("animations:animation") is None
+        assert doc.serialize() == "animations {\n}\n"
+
+    def test_remove_keyword_in_section_by_bare_key(self):
+        doc = parse_string("animations {\n    animation = windows, 1, 3, default\n}\n")
+        doc.remove("animation")
+        assert doc.find("animation") is None
         assert doc.serialize() == "animations {\n}\n"
 
     def test_remove_in_section(self):
