@@ -24,8 +24,8 @@ from hyprland_config._source import SourceCycleError, resolve_source_paths
 class ParseError(Exception):
     """Raised when a config line cannot be parsed."""
 
-    def __init__(self, message: str, source: str = "", lineno: int = 0) -> None:
-        self.source = source
+    def __init__(self, message: str, source_name: str = "", lineno: int = 0) -> None:
+        self.source_name = source_name
         self.lineno = lineno
         super().__init__(message)
 
@@ -69,10 +69,10 @@ def is_bind_keyword(name: str) -> bool:
 
 
 # Match one-line block: "name { key = value }"
-_ONELINE_BLOCK_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)(?:\[([^\]]*)\])?\s*\{(.+)\}\s*$")
+_ONELINE_BLOCK_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_\-]*)(?:\[([^\]]*)\])?\s*\{(.+)\}\s*$")
 
 # Match section open: "name {" or "name[key] {"
-_SECTION_OPEN_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)(?:\[([^\]]*)\])?\s*\{\s*$")
+_SECTION_OPEN_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_\-]*)(?:\[([^\]]*)\])?\s*\{\s*$")
 
 # Match variable definition: $name = value
 _VARIABLE_RE = re.compile(r"^\$([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)\s*$")
@@ -233,7 +233,7 @@ def _parse_line(
 
     raise ParseError(
         f"{source_name}:{lineno}: could not parse: {stripped!r}",
-        source=source_name,
+        source_name=source_name,
         lineno=lineno,
     )
 

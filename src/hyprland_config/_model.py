@@ -140,12 +140,7 @@ def _match_key(ln: Line, key: str) -> bool:
     return ln.full_key == key
 
 
-def _kv_matches_key(key: str) -> Callable[[Line], bool]:
-    """Build a predicate that matches KeyValueLine nodes by key."""
-    return lambda ln: _match_key(ln, key)
-
-
-def _kv_predicate(key: str) -> Callable[[Line], bool]:
+def _key_predicate(key: str) -> Callable[[Line], bool]:
     """Build a predicate for matching KeyValueLine nodes by key or glob pattern."""
     if _has_glob_chars(key):
         return lambda ln: (
@@ -156,7 +151,7 @@ def _kv_predicate(key: str) -> Callable[[Line], bool]:
                 else fnmatch(ln.full_key, key)
             )
         )
-    return _kv_matches_key(key)
+    return lambda ln: _match_key(ln, key)
 
 
 class Document:
@@ -329,7 +324,7 @@ class Document:
         recursive defaults to True when sources were followed during parsing.
         Walks lines in Hyprland evaluation order — last match wins.
         """
-        result = self._find_last(_kv_predicate(key), recursive, exclude_sources)
+        result = self._find_last(_key_predicate(key), recursive, exclude_sources)
         if result is None:
             return None
         return cast(Assignment | Keyword, result[1])
@@ -353,7 +348,7 @@ class Document:
         recursive defaults to True when sources were followed during parsing.
         Returns results in Hyprland evaluation order.
         """
-        predicate = _kv_predicate(key)
+        predicate = _key_predicate(key)
         return cast(
             list[Assignment | Keyword],
             [
@@ -415,7 +410,7 @@ class Document:
         else:
             value = str(value)
 
-        result = self._find_last(_kv_matches_key(key), recursive)
+        result = self._find_last(lambda ln: _match_key(ln, key), recursive)
 
         if result is not None:
             target_doc, target_line = result
@@ -434,9 +429,9 @@ class Document:
 
         recursive defaults to True when sources were followed during parsing.
         """
-        predicate = _kv_matches_key(key)
+        match = _key_predicate(key)
         for doc in self._target_documents(recursive):
-            doc._remove_matching_lines(predicate)
+            doc._remove_matching_lines(match)
 
     def remove_where(
         self, keyword: str, predicate: Callable[[str], bool], *, recursive: bool | None = None

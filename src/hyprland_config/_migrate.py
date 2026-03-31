@@ -30,7 +30,7 @@ class ConfigDeprecation:
         return f"{loc}{self.key}: deprecated in {self.version_deprecated}{removed}{suggestion}"
 
 
-@dataclass(frozen=True)
+@dataclass
 class _DeprecationRule:
     """Internal rule definition for matching deprecated config patterns."""
 
@@ -51,13 +51,9 @@ class _DeprecationRule:
     _value_re: re.Pattern[str] | None = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "_deprecated_ver", _version_tuple(self.version_deprecated))
-        object.__setattr__(
-            self, "_line_re", re.compile(self.line_pattern) if self.line_pattern else None
-        )
-        object.__setattr__(
-            self, "_value_re", re.compile(self.value_pattern) if self.value_pattern else None
-        )
+        self._deprecated_ver = _version_tuple(self.version_deprecated)
+        self._line_re = re.compile(self.line_pattern) if self.line_pattern else None
+        self._value_re = re.compile(self.value_pattern) if self.value_pattern else None
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:
@@ -267,7 +263,7 @@ class MigrationResult:
         return bool(self.applied)
 
 
-@dataclass(frozen=True)
+@dataclass
 class _Migration:
     description: str
     from_version: str
@@ -277,7 +273,7 @@ class _Migration:
     _from_ver: tuple[int, ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "_from_ver", _version_tuple(self.from_version))
+        self._from_ver = _version_tuple(self.from_version)
 
 
 def _transform_lines(

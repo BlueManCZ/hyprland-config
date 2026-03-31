@@ -315,4 +315,4 @@ class TestParseError:
         with pytest.raises(ParseError) as exc_info:
             parse_string("@@@ bad\n", name="test.conf")
         assert "test.conf" in str(exc_info.value)
-        assert exc_info.value.source == "test.conf"
+        assert exc_info.value.source_name == "test.conf"

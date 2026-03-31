@@ -39,7 +39,7 @@ def value_to_conf(value: bool | int | float | str) -> str:
     s = str(value)
     # Normalize gradient hex tokens: IPC returns colors without 0x prefix
     # (e.g. "ff1a2b3c ff4d5e6f 45deg"), but config files need 0x prefixes.
-    if "deg" in s and not s.startswith("0x"):
+    if re.search(r"\b\d+deg\b", s):
         parts = s.split()
         normalized = []
         for p in parts:

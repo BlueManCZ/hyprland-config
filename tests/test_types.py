@@ -89,17 +89,17 @@ class TestGradient:
         with pytest.raises(ValueError):
             Gradient.parse("")
 
-    def test_to_string_with_angle(self):
+    def test_str_with_angle(self):
         g = Gradient(colors=(Color(255, 0, 0), Color(0, 255, 0)), angle=45)
-        assert g.to_string() == "rgba(ff0000ff) rgba(00ff00ff) 45deg"
+        assert str(g) == "rgba(ff0000ff) rgba(00ff00ff) 45deg"
 
-    def test_to_string_no_angle(self):
+    def test_str_no_angle(self):
         g = Gradient(colors=(Color(255, 0, 0),), angle=0)
-        assert g.to_string() == "rgba(ff0000ff)"
+        assert str(g) == "rgba(ff0000ff)"
 
     def test_roundtrip(self):
         original = "rgba(33ccffee) rgba(00ff99ee) 45deg"
-        assert Gradient.parse(original).to_string() == original
+        assert str(Gradient.parse(original)) == original
 
 
 class TestVec2:
@@ -135,13 +135,13 @@ class TestVec2:
         with pytest.raises(ValueError, match="non-numeric"):
             Vec2.parse("abc def")
 
-    def test_to_string(self):
+    def test_str(self):
         v = Vec2(x=1920, y=1080)
-        assert v.to_string() == "1920 1080"
+        assert str(v) == "1920 1080"
 
-    def test_to_string_float(self):
+    def test_str_float(self):
         v = Vec2(x=2.5, y=3.7)
-        assert v.to_string() == "2.5 3.7"
+        assert str(v) == "2.5 3.7"
 
     def test_int_conversion(self):
         """Whole-number floats are stored as int."""

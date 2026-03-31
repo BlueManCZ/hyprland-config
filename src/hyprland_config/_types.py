@@ -74,7 +74,7 @@ class Color:
         """Format as ``0xAARRGGBB``."""
         return f"0x{self.a:02x}{self.r:02x}{self.g:02x}{self.b:02x}"
 
-    def to_string(self) -> str:
+    def __str__(self) -> str:
         """Format as ``rgba(rrggbbaa)``."""
         return self.to_rgba()
 
@@ -117,7 +117,7 @@ class Gradient:
 
         return cls(colors=tuple(colors), angle=angle)
 
-    def to_string(self) -> str:
+    def __str__(self) -> str:
         """Format the gradient as a Hyprland value string."""
         parts = [c.to_rgba() for c in self.colors]
         if self.angle != 0:
@@ -158,6 +158,6 @@ class Vec2:
         # Use int if values are whole numbers
         return cls(x=int(x) if x.is_integer() else x, y=int(y) if y.is_integer() else y)
 
-    def to_string(self) -> str:
+    def __str__(self) -> str:
         """Format as ``x y``."""
         return f"{self.x} {self.y}"

@@ -12,7 +12,6 @@ class BindData:
     key: str = ""
     dispatcher: str = ""
     arg: str = ""
-    owned: bool = True
 
     @property
     def combo(self) -> tuple[tuple[str, ...], str]:
@@ -70,5 +69,4 @@ def parse_bind_line(line: str) -> BindData | None:
         key=key,
         dispatcher=dispatcher,
         arg=arg,
-        owned=True,
     )

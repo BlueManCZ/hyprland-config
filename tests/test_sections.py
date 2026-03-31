@@ -83,6 +83,15 @@ class TestSection:
         doc = parse_string(SAMPLE_CONFIG)
         assert doc.section("nonexistent") == []
 
+    def test_hyphenated_section_name(self):
+        """Plugin sections like 'split-monitor-workspaces' use hyphens."""
+        text = "split-monitor-workspaces {\n    count = 2\n    keep_focused = 1\n}\n"
+        doc = parse_string(text)
+        lines = doc.section("split-monitor-workspaces")
+        assert len(lines) == 2
+        assert isinstance(lines[0], Assignment)
+        assert lines[0].key == "count"
+
     def test_keyed_section(self):
         text = (
             "device[epic-mouse-v1] {\n"
