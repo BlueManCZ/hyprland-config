@@ -167,6 +167,15 @@ class TestClassification:
         assert isinstance(node, SectionOpen)
         assert node.name == "general"
 
+    def test_section_open_with_colon(self):
+        doc = parse_string("plugin:dynamic-cursors {\n    shake_threshold = 3\n}\n")
+        node = doc.lines[0]
+        assert isinstance(node, SectionOpen)
+        assert node.name == "plugin:dynamic-cursors"
+        assignment = doc.lines[1]
+        assert isinstance(assignment, Assignment)
+        assert assignment.full_key == "plugin:dynamic-cursors:shake_threshold"
+
     def test_section_open_with_key(self):
         doc = parse_string("device[my-mouse] {\n")
         node = doc.lines[0]

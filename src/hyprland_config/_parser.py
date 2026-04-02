@@ -69,10 +69,10 @@ def is_bind_keyword(name: str) -> bool:
 
 
 # Match one-line block: "name { key = value }"
-_ONELINE_BLOCK_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_\-]*)(?:\[([^\]]*)\])?\s*\{(.+)\}\s*$")
+_ONELINE_BLOCK_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_:\-]*)(?:\[([^\]]*)\])?\s*\{(.+)\}\s*$")
 
 # Match section open: "name {" or "name[key] {"
-_SECTION_OPEN_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_\-]*)(?:\[([^\]]*)\])?\s*\{\s*$")
+_SECTION_OPEN_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_:\-]*)(?:\[([^\]]*)\])?\s*\{\s*$")
 
 # Match variable definition: $name = value
 _VARIABLE_RE = re.compile(r"^\$([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)\s*$")
