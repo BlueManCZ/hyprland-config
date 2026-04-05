@@ -75,7 +75,7 @@ _ONELINE_BLOCK_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_:\-]*)(?:\[([^\]]*)\])?\s
 _SECTION_OPEN_RE = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_:\-]*)(?:\[([^\]]*)\])?\s*\{\s*$")
 
 # Match variable definition: $name = value
-_VARIABLE_RE = re.compile(r"^\$([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)\s*$")
+_VARIABLE_RE = re.compile(r"^\$([a-zA-Z_][a-zA-Z0-9_\-]*)\s*=\s*(.*?)\s*$")
 
 # Match source directive
 _SOURCE_RE = re.compile(r"^source\s*=\s*(.*?)\s*$")

@@ -57,6 +57,12 @@ class TestRoundTrip:
         doc = parse_string(text)
         assert doc.serialize() == text
 
+    def test_variable_with_hyphen(self):
+        text = "$terminal-float = kitty --class kitty-floating\n"
+        doc = parse_string(text)
+        assert doc.serialize() == text
+        assert doc.variables["terminal-float"] == "kitty --class kitty-floating"
+
     def test_bind_keyword(self):
         text = "bind = SUPER, Q, killactive,\n"
         doc = parse_string(text)
