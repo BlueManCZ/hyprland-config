@@ -4,101 +4,50 @@ Supports integer and float arithmetic: +, -, *, /, %, parentheses.
 Variable references ($var) should be expanded before evaluation.
 """
 
-import re
+import ast
+import operator
+from typing import Callable
 
-# Tokenizer: numbers (int/float), operators, parentheses, whitespace
-_TOKEN_RE = re.compile(
-    r"\s*(?:"
-    r"(\d+(?:\.\d+)?)"  # number
-    r"|([+\-*/%()])"  # operator or paren
-    r")\s*"
-)
+_BIN_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Mod: operator.mod,
+}
+
+_UNARY_OPS: dict[type[ast.unaryop], Callable[[float], float]] = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
 
 
 class ExprError(Exception):
     """Raised when an expression cannot be evaluated."""
 
 
-def _tokenize(expr: str) -> list[tuple[str, str]]:
-    """Tokenize an expression into (type, value) pairs.
-
-    Types: 'num', 'op'
-    """
-    tokens: list[tuple[str, str]] = []
-    pos = 0
-    expr = expr.strip()
-    while pos < len(expr):
-        m = _TOKEN_RE.match(expr, pos)
-        if not m or m.start() != pos:
-            raise ExprError(f"unexpected character in expression: {expr[pos:]!r}")
-        if m.group(1) is not None:
-            tokens.append(("num", m.group(1)))
-        elif m.group(2) is not None:
-            tokens.append(("op", m.group(2)))
-        pos = m.end()
-    return tokens
-
-
-def _parse_expr(tokens: list[tuple[str, str]], pos: int) -> tuple[float, int]:
-    """Parse additive expression: term ((+|-) term)*."""
-    left, pos = _parse_term(tokens, pos)
-    while pos < len(tokens) and tokens[pos][0] == "op" and tokens[pos][1] in "+-":
-        op = tokens[pos][1]
-        pos += 1
-        right, pos = _parse_term(tokens, pos)
-        if op == "+":
-            left += right
-        else:
-            left -= right
-    return left, pos
-
-
-def _parse_term(tokens: list[tuple[str, str]], pos: int) -> tuple[float, int]:
-    """Parse multiplicative expression: unary ((*|/|%) unary)*."""
-    left, pos = _parse_unary(tokens, pos)
-    while pos < len(tokens) and tokens[pos][0] == "op" and tokens[pos][1] in "*/%":
-        op = tokens[pos][1]
-        pos += 1
-        right, pos = _parse_unary(tokens, pos)
-        if op == "*":
-            left *= right
-        elif op == "/":
-            if right == 0:
-                raise ExprError("division by zero")
-            left /= right
-        else:
-            if right == 0:
-                raise ExprError("modulo by zero")
-            left %= right
-    return left, pos
-
-
-def _parse_unary(tokens: list[tuple[str, str]], pos: int) -> tuple[float, int]:
-    """Parse unary +/- prefix or primary."""
-    if pos < len(tokens) and tokens[pos] == ("op", "-"):
-        pos += 1
-        val, pos = _parse_unary(tokens, pos)
-        return -val, pos
-    if pos < len(tokens) and tokens[pos] == ("op", "+"):
-        pos += 1
-        return _parse_unary(tokens, pos)
-    return _parse_primary(tokens, pos)
-
-
-def _parse_primary(tokens: list[tuple[str, str]], pos: int) -> tuple[float, int]:
-    """Parse number or parenthesised expression."""
-    if pos >= len(tokens):
-        raise ExprError("unexpected end of expression")
-    tok_type, tok_val = tokens[pos]
-    if tok_type == "num":
-        return float(tok_val), pos + 1
-    if tok_val == "(":
-        pos += 1
-        val, pos = _parse_expr(tokens, pos)
-        if pos >= len(tokens) or tokens[pos] != ("op", ")"):
-            raise ExprError("missing closing parenthesis")
-        return val, pos + 1
-    raise ExprError(f"unexpected token: {tok_val!r}")
+def _eval_node(node: ast.AST) -> int | float:
+    """Recursively evaluate an AST node, allowing only arithmetic on numeric constants."""
+    if isinstance(node, ast.Constant):
+        # bool is a subclass of int — reject so True/False aren't treated as numbers
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            raise ExprError(f"unsupported literal: {node.value!r}")
+        return node.value
+    if isinstance(node, ast.BinOp):
+        op = _BIN_OPS.get(type(node.op))
+        if op is None:
+            raise ExprError(f"unsupported operator: {type(node.op).__name__}")
+        try:
+            return op(_eval_node(node.left), _eval_node(node.right))
+        except ZeroDivisionError:
+            name = "division" if isinstance(node.op, ast.Div) else "modulo"
+            raise ExprError(f"{name} by zero") from None
+    if isinstance(node, ast.UnaryOp):
+        op = _UNARY_OPS.get(type(node.op))
+        if op is None:
+            raise ExprError(f"unsupported unary operator: {type(node.op).__name__}")
+        return op(_eval_node(node.operand))
+    raise ExprError(f"unsupported expression node: {type(node).__name__}")
 
 
 def evaluate(expr: str) -> int | float:
@@ -106,12 +55,17 @@ def evaluate(expr: str) -> int | float:
 
     Returns int when the result is a whole number, float otherwise.
     """
-    tokens = _tokenize(expr)
-    if not tokens:
+    expr = expr.strip()
+    if not expr:
         raise ExprError("empty expression")
-    result, pos = _parse_expr(tokens, 0)
-    if pos != len(tokens):
-        raise ExprError(f"unexpected token after expression: {tokens[pos][1]!r}")
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as e:
+        msg = e.msg or str(e)
+        if "never closed" in msg:
+            raise ExprError("missing closing parenthesis") from None
+        raise ExprError(f"invalid expression: {msg}") from None
+    result = _eval_node(tree.body)
     # Return int when possible for cleaner output
     if isinstance(result, float) and result.is_integer():
         return int(result)

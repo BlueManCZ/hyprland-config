@@ -150,3 +150,44 @@ class TestMigrate:
         result = migrate(parse_string("exec_once = waybar\n"))
         assert isinstance(result.applied, list)
         assert isinstance(result.skipped, list)
+
+
+class TestMigratePreservesLineShape:
+    """Flat colon-prefixed lines must stay flat; sectioned lines must stay sectioned.
+
+    Regression: ``decoration:blur_size = 8`` at top level used to serialize as
+    ``size = 8`` after migration because the rewrite only used the leaf key.
+    """
+
+    def test_flat_blur_option_stays_flat(self):
+        doc = parse_string("decoration:blur_size = 8\n")
+        migrate(doc)
+        assert doc.serialize() == "decoration:blur:size = 8\n"
+
+    def test_sectioned_blur_option_stays_sectioned(self):
+        doc = parse_string("decoration {\n    blur_size = 8\n}\n")
+        migrate(doc)
+        # The leaf-only rewrite is correct inside a section block.
+        assert "    size = 8\n" in doc.serialize()
+        # And the full_key still reflects the new nested path.
+        kv = [ln for ln in doc.lines if isinstance(ln, KeyValueLine)]
+        assert kv[0].full_key == "decoration:blur:size"
+        assert kv[0].key == "size"
+
+    def test_flat_no_cursor_warps_stays_flat(self):
+        doc = parse_string("cursor:no_cursor_warps = true\n")
+        migrate(doc)
+        assert doc.serialize() == "cursor:no_warps = true\n"
+        kv = [ln for ln in doc.lines if isinstance(ln, KeyValueLine)]
+        assert kv[0].key == "cursor:no_warps"
+        assert kv[0].full_key == "cursor:no_warps"
+
+    def test_flat_numlock_stays_flat(self):
+        doc = parse_string("input:numlock_by_default = true\n")
+        migrate(doc)
+        assert doc.serialize() == "input:kb_numlock = true\n"
+
+    def test_flat_sensitivity_stays_flat(self):
+        doc = parse_string("general:sensitivity = 1.0\n")
+        migrate(doc)
+        assert doc.serialize() == "input:sensitivity = 1.0\n"

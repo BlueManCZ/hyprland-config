@@ -124,7 +124,11 @@ class ErrorLine(Line):
     message: str = ""
 
 
-def _match_key(ln: Line, key: str) -> bool:
+def _match_key(
+    ln: Line,
+    key: str,
+    matches: Callable[[str, str], bool] = str.__eq__,
+) -> bool:
     """Match a KeyValueLine by key.
 
     Keywords (bind, monitor, animation, …) match on their bare ``key``
@@ -132,25 +136,21 @@ def _match_key(ln: Line, key: str) -> bool:
     This means ``find("animation")`` matches ``animation`` inside an
     ``animations { }`` section, and ``find("animations:animation")``
     also works.  Assignments match on ``full_key`` only.
+
+    *matches* compares two strings; defaults to equality, but ``fnmatch``
+    is used for glob patterns.
     """
     if not isinstance(ln, KeyValueLine):
         return False
     if isinstance(ln, Keyword):
-        return ln.key == key or ln.full_key == key
-    return ln.full_key == key
+        return matches(ln.key, key) or matches(ln.full_key, key)
+    return matches(ln.full_key, key)
 
 
 def _key_predicate(key: str) -> Callable[[Line], bool]:
     """Build a predicate for matching KeyValueLine nodes by key or glob pattern."""
     if _has_glob_chars(key):
-        return lambda ln: (
-            isinstance(ln, KeyValueLine)
-            and (
-                (fnmatch(ln.key, key) or fnmatch(ln.full_key, key))
-                if isinstance(ln, Keyword)
-                else fnmatch(ln.full_key, key)
-            )
-        )
+        return lambda ln: _match_key(ln, key, fnmatch)
     return lambda ln: _match_key(ln, key)
 
 

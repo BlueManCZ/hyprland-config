@@ -84,9 +84,7 @@ _RULES: list[_DeprecationRule] = [
         version_deprecated="0.41",
         suggestion="Use cursor:no_warps instead",
     ),
-    # v0.41.2: opacity values changed from 0-1 float strings to actual floats
-    # Handled separately since it requires value inspection
-    # v0.42: general:layout removed, replaced by general:layout:default
+    # v0.42: apply_sens_to_raw removed from general
     _DeprecationRule(
         key="general:apply_sens_to_raw",
         message="apply_sens_to_raw was removed",
@@ -162,8 +160,6 @@ _RULES: list[_DeprecationRule] = [
         version_removed="0.46",
         suggestion="Use misc:vfr = true instead (note: inverted logic)",
     ),
-    # env = GDK_BACKEND,wayland — using comma instead of space
-    # This is a common mistake, not a version deprecation, but useful to flag
     # v0.48+: deprecated animation names
     _DeprecationRule(
         key="animation",
@@ -292,16 +288,33 @@ def _transform_lines(
     return changed
 
 
+def _rewrite_line_key(line: KeyValueLine, new_full_key: str) -> None:
+    """Rewrite ``line`` to use ``new_full_key``, preserving flat-vs-sectioned syntax.
+
+    The parser exposes two shapes:
+
+    - Flat colon syntax (e.g. ``decoration:blur:size = 8`` at top level):
+      ``line.key == line.full_key`` — the whole colon path is written inline.
+    - Sectioned syntax (inside ``decoration { blur { size = 8 } }``):
+      ``line.key`` is the leaf ``size`` while ``line.full_key`` is the full path.
+
+    Migrations must preserve whichever shape the line already has — otherwise
+    a flat ``decoration:blur_size = 8`` line rewrites as ``size = 8``, losing
+    its section context.
+    """
+    is_flat = line.key == line.full_key
+    line.full_key = new_full_key
+    new_leaf = new_full_key.rsplit(":", 1)[-1]
+    line.key = new_full_key if is_flat else new_leaf
+    line.raw = _format_kv_line(line.indent, line.key, line.value, line.inline_comment)
+
+
 def _migrate_blur_options(doc: Document) -> bool:
     """Move decoration:blur_* options to decoration:blur:* subsection."""
     renames = {f"decoration:blur_{opt}": f"decoration:blur:{opt}" for opt in _BLUR_OPTIONS}
 
     def transform(line: KeyValueLine) -> None:
-        new_key = renames[line.full_key]
-        new_leaf = new_key.rsplit(":", 1)[-1]
-        line.full_key = new_key
-        line.key = new_leaf
-        line.raw = _format_kv_line(line.indent, new_leaf, line.value, line.inline_comment)
+        _rewrite_line_key(line, renames[line.full_key])
 
     return _transform_lines(doc, lambda ln: ln.full_key in renames, transform)
 
@@ -343,12 +356,14 @@ def _make_rename_migration(
     - "full_key" (default): match on line.full_key == old_full_key
     - "key": match on line.key == old_full_key (for top-level keywords)
     """
-    new_leaf = new_full_key.rsplit(":", 1)[-1]
 
     def transform(line: KeyValueLine) -> None:
-        line.full_key = line.full_key.replace(old_full_key, new_full_key, 1)
-        line.key = new_leaf
-        line.raw = _format_kv_line(line.indent, new_leaf, line.value, line.inline_comment)
+        # Rewrite the full_key via substring replacement so callers can pass
+        # partial paths (e.g. the "key" match_by case) and still land on the
+        # right target; then resync the raw form via _rewrite_line_key, which
+        # preserves flat-colon vs. sectioned syntax.
+        replaced_full_key = line.full_key.replace(old_full_key, new_full_key, 1)
+        _rewrite_line_key(line, replaced_full_key)
 
     if match_by == "key":
         old_leaf = old_full_key.rsplit(":", 1)[-1]
