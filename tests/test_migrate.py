@@ -113,21 +113,156 @@ class TestMigrate:
         kv = [ln for ln in doc.lines if isinstance(ln, KeyValueLine)]
         assert kv[0].full_key == "input:kb_numlock"
 
-    def test_migrate_windowrule_v1_to_v2(self):
+    def test_migrate_windowrule_v1_chains_to_v3(self):
+        # v1 (``windowrule = float,Firefox``) → v2 → v3 in one
+        # ``migrate()`` call: the migrations chain by version order.
         doc = parse_string("windowrule = float,Firefox\n")
         result = migrate(doc)
         assert result.changes_made
         serialized = doc.serialize()
+        # Final form is v3, not v2 — the chain runs both rewrites.
+        assert "windowrulev2" not in serialized
+        assert "windowrule = match:title Firefox, float on" in serialized
+
+    def test_migrate_windowrule_v1_stops_at_v2_when_capped(self):
+        # Capping to_version stops the chain at v2 — useful for tools
+        # that want intermediate state.
+        doc = parse_string("windowrule = float,Firefox\n")
+        migrate(doc, to_version="0.52")
+        serialized = doc.serialize()
         assert "windowrulev2" in serialized
         assert "title:Firefox" in serialized
 
-    def test_migrate_windowrule_v2_not_converted(self):
-        """Already using v2 match syntax — should not be converted."""
+    def test_migrate_windowrule_v1_keyword_with_v2_syntax_stays_alone(self):
+        # ``windowrule = float,title:Firefox`` is malformed — v1
+        # keyword with v2-style ``title:`` matcher. v1→v2 skips it
+        # because the second part already starts with a v2 prefix
+        # (would otherwise double-wrap as ``title:title:``); v2→v3
+        # skips it because the keyword isn't ``windowrulev2``. The
+        # line is left as-is rather than guessing what the author
+        # meant.
         doc = parse_string("windowrule = float,title:Firefox\n")
         migrate(doc)
-        # The windowrule v1→v2 migration should skip this
         serialized = doc.serialize()
         assert "title:title:" not in serialized
+        # Stays unchanged — neither migration claims it.
+        assert "windowrule = float,title:Firefox" in serialized
+
+    def test_migrate_windowrule_v3_not_back_to_v2(self):
+        """v3 lines (Hyprland 0.53+) must NOT trigger the v1→v2 migration.
+
+        Regression: the v1→v2 predicate split the line value on the
+        first comma and checked if the *second* part started with a
+        v2 prefix (``title:``, ``class:``, …). v3 lines look like
+        ``windowrule = match:class foo, float on``. Both halves of
+        the comma split fail the v2-prefix check, so the migration
+        wrongly fired and corrupted the line into
+        ``windowrulev2 = match:class foo, title:float on`` —
+        which Hyprland 0.53+ then rejects, since v2 is itself
+        deprecated and ``title:float on`` is nonsense.
+
+        The fix: skip migration on any ``windowrule = …`` line that
+        contains at least one ``match:`` token (the v3 marker).
+        """
+        # v3 with matchers first, effect last
+        doc = parse_string("windowrule = match:class ^(firefox)$, float on\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "windowrulev2" not in out
+        assert "title:float on" not in out
+        assert out.strip() == "windowrule = match:class ^(firefox)$, float on"
+
+    def test_migrate_windowrule_v3_effect_first_not_back_to_v2(self):
+        """v3 with effect first, matchers last — still must not migrate."""
+        # Both orderings of v3 are valid; both must skip migration.
+        doc = parse_string("windowrule = float on, match:class ^(firefox)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "windowrulev2" not in out
+        # The leading "float on" was the second-comma-part candidate
+        # for being wrapped with ``title:`` under the old buggy
+        # predicate. Confirm it stayed intact.
+        assert "title:" not in out
+
+    def test_migrate_windowrulev2_to_v3_basic(self):
+        doc = parse_string("windowrulev2 = float, class:^(firefox)$\n")
+        result = migrate(doc)
+        assert result.changes_made
+        out = doc.serialize()
+        # Keyword renamed, matcher carries ``match:`` prefix and a
+        # space, bool effect gained ``on`` argument.
+        assert "windowrule = match:class ^(firefox)$, float on" in out
+
+    def test_migrate_windowrulev2_to_v3_renamed_effect(self):
+        # ``noblur`` → ``no_blur`` (v3 snake_case), gains ``on``.
+        doc = parse_string("windowrulev2 = noblur, class:^(kitty)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "windowrule = match:class ^(kitty)$, no_blur on" in out
+
+    def test_migrate_windowrulev2_to_v3_renamed_matcher(self):
+        # ``initialClass`` → ``initial_class``.
+        doc = parse_string("windowrulev2 = float, initialClass:^(firefox)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "match:initial_class ^(firefox)$" in out
+
+    def test_migrate_windowrulev2_to_v3_negation(self):
+        # v2's ``~class:foo`` becomes ``match:class negative:foo``.
+        doc = parse_string("windowrulev2 = float, ~class:^(firefox)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "match:class negative:^(firefox)$" in out
+
+    def test_migrate_windowrulev2_to_v3_multiarg_effect(self):
+        # ``opacity 0.5 0.8`` keeps its args after the rename.
+        doc = parse_string("windowrulev2 = opacity 0.5 0.8, class:^(kitty)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "windowrule = match:class ^(kitty)$, opacity 0.5 0.8" in out
+
+    def test_migrate_windowrulev2_to_v3_multi_matcher(self):
+        # v2 supports space-separated matchers; v3 uses comma-separated
+        # ``match:`` tokens. Both matchers must carry over.
+        doc = parse_string("windowrulev2 = float, class:^(kitty)$ title:^(scratch)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "match:class ^(kitty)$" in out
+        assert "match:title ^(scratch)$" in out
+        assert "float on" in out
+
+    def test_migrate_windowrulev2_to_v3_corruption_recovery(self):
+        # Recovery for the ``hyprland-config<0.4.4`` corruption: v3
+        # syntax incorrectly wrapped as v2 with a stray ``title:``
+        # prepended to the effect token. The migration recognises the
+        # v3-only ``match:`` marker and strips the bogus ``title:``.
+        doc = parse_string(r"windowrulev2 = match:class ^(ghostty)$, title:opacity 0.8" + "\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "title:opacity" not in out
+        assert "windowrule = match:class ^(ghostty)$, opacity 0.8" in out
+
+    def test_migrate_windowrulev2_to_v3_corruption_recovery_with_bool_effect(self):
+        # Same corruption pattern with a bool effect that needs ``on``
+        # appended. The recovery just strips ``title:``; the effect's
+        # original ``on`` is already present in the captured args.
+        doc = parse_string(r"windowrulev2 = match:class ^(firefox)$, title:float on" + "\n")
+        migrate(doc)
+        out = doc.serialize()
+        assert "title:float" not in out
+        assert "windowrule = match:class ^(firefox)$, float on" in out
+
+    def test_migrate_windowrulev2_real_v2_with_title_matcher_not_corrupted(self):
+        # A real v2 line whose only matcher happens to be ``title:foo``
+        # (no ``match:`` token anywhere) must NOT be treated as
+        # corruption — the recovery branch fires only when ``match:``
+        # is present.
+        doc = parse_string("windowrulev2 = float, title:^(scratch)$\n")
+        migrate(doc)
+        out = doc.serialize()
+        # Translated as v2 → v3: the ``title:`` is a v2 matcher, not
+        # a corruption marker.
+        assert "windowrule = match:title ^(scratch)$, float on" in out
 
     def test_migrate_version_range(self):
         doc = parse_string("exec_once = waybar\n")

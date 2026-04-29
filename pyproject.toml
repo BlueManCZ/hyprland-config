@@ -1,6 +1,6 @@
 [project]
 name = "hyprland-config"
-version = "0.4.3"
+version = "0.4.4"
 description = "Round-trip parser and editor for Hyprland configuration files"
 requires-python = ">=3.12"
 license = "MIT"
