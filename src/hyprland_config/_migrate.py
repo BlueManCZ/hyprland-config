@@ -7,8 +7,9 @@ users about deprecated syntax or automatically migrate configs.
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Literal
 
-from hyprland_config._model import Comment, Document, KeyValueLine, Line, _format_kv_line
+from hyprland_config._model import Comment, Document, KeyValueLine, Line
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ _RULES: list[_DeprecationRule] = [
         version_removed="0.42",
         suggestion="Remove this option — it has no effect",
     ),
-    # v0.44: exec_once renamed to exec-once
+    # v0.34: exec_once renamed to exec-once
     _DeprecationRule(
         key="exec_once",
         message="exec_once was renamed",
@@ -176,7 +177,7 @@ _RULES: list[_DeprecationRule] = [
 def check_deprecated(
     doc: Document,
     *,
-    min_version: str = "",
+    min_version: str | None = None,
     recursive: bool | None = None,
 ) -> list[ConfigDeprecation]:
     """Check a document for deprecated config patterns.
@@ -196,11 +197,11 @@ def check_deprecated(
         document's ``sources_followed`` flag.
     """
     warnings: list[ConfigDeprecation] = []
-    min_ver = _version_tuple(min_version) if min_version else ()
+    min_ver = _version_tuple(min_version) if min_version is not None else None
 
-    for _owner_doc, line in doc._iter_lines(recursive):
+    for _owner_doc, line in doc.iter_lines(recursive):
         for rule in _RULES:
-            if min_ver and rule._deprecated_ver < min_ver:
+            if min_ver is not None and rule._deprecated_ver < min_ver:
                 continue
             if _rule_matches(rule, line):
                 warnings.append(
@@ -284,7 +285,7 @@ def _transform_lines(
             transform(line)
             changed = True
     if changed:
-        doc._mark_dirty()
+        doc.mark_dirty()
     return changed
 
 
@@ -306,7 +307,7 @@ def _rewrite_line_key(line: KeyValueLine, new_full_key: str) -> None:
     line.full_key = new_full_key
     new_leaf = new_full_key.rsplit(":", 1)[-1]
     line.key = new_full_key if is_flat else new_leaf
-    line.raw = _format_kv_line(line.indent, line.key, line.value, line.inline_comment)
+    line.update_raw()
 
 
 def _migrate_blur_options(doc: Document) -> bool:
@@ -564,7 +565,7 @@ def _migrate_windowrule_v2_to_v3(doc: Document) -> bool:
         line.key = "windowrule"
         line.full_key = line.full_key.replace("windowrulev2", "windowrule", 1)
         line.value = new_value
-        line.raw = _format_kv_line(line.indent, "windowrule", new_value, line.inline_comment)
+        line.update_raw()
 
     return _transform_lines(doc, predicate, transform)
 
@@ -602,7 +603,7 @@ def _migrate_windowrule_v1_to_v2(doc: Document) -> bool:
         line.key = "windowrulev2"
         line.full_key = line.full_key.replace("windowrule", "windowrulev2", 1)
         line.value = f"{rule}, title:{window}"
-        line.raw = _format_kv_line(line.indent, "windowrulev2", line.value, line.inline_comment)
+        line.update_raw()
 
     return _transform_lines(doc, predicate, transform)
 
@@ -611,13 +612,13 @@ def _make_rename_migration(
     old_full_key: str,
     new_full_key: str,
     *,
-    match_by: str = "full_key",
+    match_by: Literal["full_key", "key"] = "full_key",
 ) -> Callable[[Document], bool]:
     """Build a migration that renames a key.
 
-    match_by controls how lines are matched:
-    - "full_key" (default): match on line.full_key == old_full_key
-    - "key": match on line.key == old_full_key (for top-level keywords)
+    *match_by* controls how lines are matched:
+    - ``"full_key"`` (default): match on ``line.full_key == old_full_key``
+    - ``"key"``: match on ``line.key == old_full_key`` (for top-level keywords)
     """
 
     def transform(line: KeyValueLine) -> None:
@@ -687,8 +688,8 @@ _MIGRATIONS: list[_Migration] = sorted(
 def migrate(
     doc: Document,
     *,
-    from_version: str = "",
-    to_version: str = "",
+    from_version: str | None = None,
+    to_version: str | None = None,
     recursive: bool | None = None,
 ) -> MigrationResult:
     """Apply known migration transforms to a document.
@@ -717,16 +718,16 @@ def migrate(
         Lists of applied and skipped migration descriptions.
     """
     result = MigrationResult()
-    from_ver = _version_tuple(from_version) if from_version else ()
-    to_ver = _version_tuple(to_version) if to_version else (999,)
+    from_ver = _version_tuple(from_version) if from_version is not None else None
+    to_ver = _version_tuple(to_version) if to_version is not None else None
 
     for m in _MIGRATIONS:
-        if from_ver and m._from_ver < from_ver:
+        if from_ver is not None and m._from_ver < from_ver:
             continue
-        if m._from_ver >= to_ver:
+        if to_ver is not None and m._from_ver >= to_ver:
             continue
         applied = False
-        for target_doc in doc._target_documents(recursive):
+        for target_doc in doc.target_documents(recursive):
             if m.transform(target_doc):
                 applied = True
         if applied:

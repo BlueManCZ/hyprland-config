@@ -8,14 +8,18 @@ from pathlib import Path
 from typing import cast
 
 from hyprland_config._expr import expand_value
+from hyprland_config._values import value_to_conf
 from hyprland_config._writer import atomic_write
 
 _INDENT = "    "
 
 
+_GLOB_CHARS = frozenset(("*", "?", "["))
+
+
 def _has_glob_chars(pattern: str) -> bool:
     """Check if a string contains glob metacharacters."""
-    return any(c in pattern for c in ("*", "?", "["))
+    return any(c in _GLOB_CHARS for c in pattern)
 
 
 def _format_kv_line(indent: str, key: str, value: str, inline_comment: str = "") -> str:
@@ -66,6 +70,14 @@ class KeyValueLine(Line):
     value: str = ""
     full_key: str = ""
     inline_comment: str = ""
+
+    def update_raw(self) -> None:
+        """Re-render :attr:`raw` from the current key/value/indent/inline_comment.
+
+        Call this after mutating any of those fields so the serialized form
+        reflects the change.
+        """
+        self.raw = _format_kv_line(self.indent, self.key, self.value, self.inline_comment)
 
 
 @dataclass
@@ -124,34 +136,24 @@ class ErrorLine(Line):
     message: str = ""
 
 
-def _match_key(
-    ln: Line,
-    key: str,
-    matches: Callable[[str, str], bool] = str.__eq__,
-) -> bool:
-    """Match a KeyValueLine by key.
+def _key_matches(ln: Line, key: str, compare: Callable[[str, str], bool]) -> bool:
+    """Match a KeyValueLine by key using *compare* to test equality.
 
-    Keywords (bind, monitor, animation, …) match on their bare ``key``
-    OR ``full_key`` because Hyprland ignores section context for these.
-    This means ``find("animation")`` matches ``animation`` inside an
-    ``animations { }`` section, and ``find("animations:animation")``
-    also works.  Assignments match on ``full_key`` only.
-
-    *matches* compares two strings; defaults to equality, but ``fnmatch``
-    is used for glob patterns.
+    Keywords (bind, monitor, animation, …) match on bare ``key`` OR
+    ``full_key`` because Hyprland ignores section context for these.
+    Assignments match on ``full_key`` only.
     """
     if not isinstance(ln, KeyValueLine):
         return False
     if isinstance(ln, Keyword):
-        return matches(ln.key, key) or matches(ln.full_key, key)
-    return matches(ln.full_key, key)
+        return compare(ln.key, key) or compare(ln.full_key, key)
+    return compare(ln.full_key, key)
 
 
 def _key_predicate(key: str) -> Callable[[Line], bool]:
     """Build a predicate for matching KeyValueLine nodes by key or glob pattern."""
-    if _has_glob_chars(key):
-        return lambda ln: _match_key(ln, key, fnmatch)
-    return lambda ln: _match_key(ln, key)
+    compare = fnmatch if _has_glob_chars(key) else str.__eq__
+    return lambda ln: _key_matches(ln, key, compare)
 
 
 class Document:
@@ -185,31 +187,39 @@ class Document:
             if isinstance(line, ErrorLine)
         ]
 
-    def _mark_dirty(self) -> None:
+    def mark_dirty(self) -> None:
+        """Flag this document as having unsaved modifications.
+
+        :meth:`set`, :meth:`remove`, :meth:`append`, and :meth:`set_variable`
+        already do this for you. Call it manually only when mutating
+        :attr:`lines` directly.
+        """
         self.dirty = True
 
     def _resolve_recursive(self, recursive: bool | None) -> bool:
         return self.sources_followed if recursive is None else recursive
 
-    def _iter_source_docs(self) -> Iterator["Document"]:
-        """Yield all sub-Documents from Source nodes, depth-first."""
+    def _iter_sub_documents(self) -> Iterator["Document"]:
+        """Yield every sourced sub-Document, depth-first. Excludes self."""
         for line in self.lines:
             if isinstance(line, Source):
                 for sub in line.documents:
                     yield sub
-                    yield from sub._iter_source_docs()
+                    yield from sub._iter_sub_documents()
 
     def _iter_all_documents(self) -> Iterator["Document"]:
-        """Yield self followed by all sub-Documents, depth-first."""
+        """Yield self followed by every sourced sub-Document, depth-first."""
         yield self
-        yield from self._iter_source_docs()
+        yield from self._iter_sub_documents()
 
-    def _target_documents(self, recursive: bool | None) -> Iterator["Document"]:
-        """Yield documents to operate on based on recursive flag."""
+    def target_documents(self, recursive: bool | None) -> Iterator["Document"]:
+        """Yield self, plus sub-documents when *recursive* resolves true.
+
+        *recursive=None* falls back to :attr:`sources_followed`.
+        """
+        yield self
         if self._resolve_recursive(recursive):
-            yield from self._iter_all_documents()
-        else:
-            yield self
+            yield from self._iter_sub_documents()
 
     def _iter_lines_recursive(
         self,
@@ -228,25 +238,27 @@ class Document:
         for line in self.lines:
             if isinstance(line, Source):
                 yield self, line
-                if exclude_sources and any(
-                    rp.resolve() in exclude_sources for rp in line.resolved_paths
-                ):
+                # resolved_paths are pre-resolved by the parser, so a plain
+                # set membership check is enough.
+                if exclude_sources and any(rp in exclude_sources for rp in line.resolved_paths):
                     continue
                 for sub in line.documents:
                     yield from sub._iter_lines_recursive(exclude_sources)
             else:
                 yield self, line
 
-    def _iter_lines(
+    def iter_lines(
         self,
-        recursive: bool | None,
+        recursive: bool | None = None,
         exclude_sources: frozenset[Path] = frozenset(),
     ) -> Iterator[tuple["Document", Line]]:
-        """Yield (document, line) pairs in correct evaluation order.
+        """Yield (owning_document, line) pairs in Hyprland evaluation order.
 
-        When recursive, source directives are expanded at the point they
-        appear — matching Hyprland's semantics. When not recursive, yields
-        only this document's lines.
+        When recursive (*None* falls back to :attr:`sources_followed`),
+        source directives are expanded inline so the "last value wins"
+        semantics match Hyprland's. *exclude_sources* skips expansion of
+        sources whose resolved paths appear in the set; the Source line
+        itself is still yielded.
         """
         if self._resolve_recursive(recursive):
             yield from self._iter_lines_recursive(exclude_sources)
@@ -264,8 +276,8 @@ class Document:
 
         Returns (owning_document, line) or None.
         """
-        result: tuple["Document", Line] | None = None
-        for doc, line in self._iter_lines(recursive, exclude_sources):
+        result: tuple[Document, Line] | None = None
+        for doc, line in self.iter_lines(recursive, exclude_sources):
             if predicate(line):
                 result = (doc, line)
         return result
@@ -275,7 +287,7 @@ class Document:
         before = len(self.lines)
         self.lines = [line for line in self.lines if not predicate(line)]
         if len(self.lines) != before:
-            self._mark_dirty()
+            self.mark_dirty()
 
     def serialize(self) -> str:
         """Reconstruct the original file text from line nodes."""
@@ -351,11 +363,7 @@ class Document:
         predicate = _key_predicate(key)
         return cast(
             list[Assignment | Keyword],
-            [
-                line
-                for _doc, line in self._iter_lines(recursive, exclude_sources)
-                if predicate(line)
-            ],
+            [line for _doc, line in self.iter_lines(recursive, exclude_sources) if predicate(line)],
         )
 
     def expand(self, text: str) -> str:
@@ -384,7 +392,7 @@ class Document:
             target_var = cast(Variable, target_line)
             target_var.value = value
             target_var.raw = f"{target_var.indent}${name} = {value}\n"
-            target_doc._mark_dirty()
+            target_doc.mark_dirty()
         else:
             # Insert after last existing Variable line, or at the top
             insert_idx = 0
@@ -393,7 +401,7 @@ class Document:
                     insert_idx = i + 1
             node = Variable(raw=f"${name} = {value}\n", name=name, value=value)
             self.lines.insert(insert_idx, node)
-            self._mark_dirty()
+            self.mark_dirty()
 
     def set(
         self, key: str, value: str | int | float | bool, *, recursive: bool | None = None
@@ -405,24 +413,19 @@ class Document:
         Updates the last occurrence wherever it lives.
         If the key doesn't exist anywhere, inserts into this document.
         """
-        if isinstance(value, bool):
-            value = "true" if value else "false"
-        else:
-            value = str(value)
+        value = value_to_conf(value)
 
-        result = self._find_last(lambda ln: _match_key(ln, key), recursive)
+        result = self._find_last(lambda ln: _key_matches(ln, key, str.__eq__), recursive)
 
         if result is not None:
             target_doc, target_line = result
             kv_line = cast(KeyValueLine, target_line)
             kv_line.value = value
-            kv_line.raw = _format_kv_line(
-                kv_line.indent, kv_line.key, value, kv_line.inline_comment
-            )
-            target_doc._mark_dirty()
+            kv_line.update_raw()
+            target_doc.mark_dirty()
         else:
             self._insert_assignment(key, value)
-            self._mark_dirty()
+            self.mark_dirty()
 
     def remove(self, key: str, *, recursive: bool | None = None) -> None:
         """Remove all Assignment or Keyword lines matching a full_key.
@@ -430,7 +433,7 @@ class Document:
         recursive defaults to True when sources were followed during parsing.
         """
         match = _key_predicate(key)
-        for doc in self._target_documents(recursive):
+        for doc in self.target_documents(recursive):
             doc._remove_matching_lines(match)
 
     def remove_where(
@@ -441,7 +444,7 @@ class Document:
         Example: doc.remove_where("bind", lambda v: "killactive" in v)
         recursive defaults to True when sources were followed during parsing.
         """
-        for doc in self._target_documents(recursive):
+        for doc in self.target_documents(recursive):
             doc._remove_matching_lines(
                 lambda ln: isinstance(ln, Keyword) and ln.key == keyword and predicate(ln.value)
             )
@@ -468,7 +471,7 @@ class Document:
                 full_key=existing.full_key,
             )
             target_doc.lines.insert(idx + 1, node)
-            target_doc._mark_dirty()
+            target_doc.mark_dirty()
         else:
             node = Keyword(
                 raw=_format_kv_line("", keyword, args),
@@ -477,7 +480,7 @@ class Document:
                 full_key=keyword,
             )
             self.lines.append(node)
-            self._mark_dirty()
+            self.mark_dirty()
 
     # -- Insert helpers --
 
@@ -573,7 +576,7 @@ class Document:
         """
         seen: set[str] = set()
         result: list[str] = []
-        for _doc, line in self._iter_lines(recursive):
+        for _doc, line in self.iter_lines(recursive):
             if isinstance(line, SectionOpen) and line.name not in seen:
                 seen.add(line.name)
                 result.append(line.name)
@@ -597,7 +600,7 @@ class Document:
         result: list[Line] = []
         collecting = False
         depth = 0
-        for _doc, line in self._iter_lines(recursive):
+        for _doc, line in self.iter_lines(recursive):
             if collecting:
                 if isinstance(line, SectionOpen):
                     depth += 1
@@ -630,7 +633,7 @@ class Document:
         Recurses into sourced sub-documents when sources were followed.
         """
         result: dict[str, str | list[str]] = {}
-        for _sub_doc, line in self._iter_lines(None):
+        for _doc, line in self.iter_lines():
             if isinstance(line, KeyValueLine):
                 value = expand_value(line.value, self.variables)
                 key = line.full_key
@@ -671,7 +674,7 @@ class Document:
         Only files that were actually modified (dirty) are written.
         """
         if self._resolve_recursive(recursive):
-            for sub in self._iter_source_docs():
+            for sub in self._iter_sub_documents():
                 if sub.dirty:
                     sub.save(recursive=False)
 

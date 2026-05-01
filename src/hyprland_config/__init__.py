@@ -3,9 +3,8 @@
 import os
 from pathlib import Path
 
-from hyprland_config._binds import BindData, parse_bind_line
-from hyprland_config._expr import ExprError
-from hyprland_config._expr import evaluate as evaluate_expression
+from hyprland_config._bind import BindData, is_bind_keyword, parse_bind_line
+from hyprland_config._expr import ExprError, evaluate_expression
 from hyprland_config._migrate import (
     ConfigDeprecation,
     MigrationResult,
@@ -29,7 +28,6 @@ from hyprland_config._model import (
 )
 from hyprland_config._parser import (
     ParseError,
-    is_bind_keyword,
     is_keyword,
     parse_file,
     parse_string,
@@ -62,9 +60,11 @@ def parse_to_dict(
 
 def _default_config() -> Path:
     """Resolve the default Hyprland config path at call time."""
-    return (
-        Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "hypr" / "hyprland.conf"
-    )
+    # Treat an empty XDG_CONFIG_HOME the same as unset — otherwise we'd build
+    # a relative path against the current working directory.
+    xdg = os.environ.get("XDG_CONFIG_HOME") or None
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "hypr" / "hyprland.conf"
 
 
 def load(

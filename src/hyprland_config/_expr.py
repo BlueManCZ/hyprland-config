@@ -6,7 +6,7 @@ Variable references ($var) should be expanded before evaluation.
 
 import ast
 import operator
-from typing import Callable
+from collections.abc import Callable
 
 _BIN_OPS: dict[type[ast.operator], Callable[[float, float], float]] = {
     ast.Add: operator.add,
@@ -50,7 +50,7 @@ def _eval_node(node: ast.AST) -> int | float:
     raise ExprError(f"unsupported expression node: {type(node).__name__}")
 
 
-def evaluate(expr: str) -> int | float:
+def evaluate_expression(expr: str) -> int | float:
     """Evaluate a simple arithmetic expression.
 
     Returns int when the result is a whole number, float otherwise.
@@ -84,6 +84,7 @@ def expand_value(text: str, variables: dict[str, str]) -> str:
        resolved per hyprlang 0.6.4+ rules.
     """
     result = text
+    # Sort by length (longest first) to avoid prefix collisions when replacing.
     for name in sorted(variables, key=len, reverse=True):
         result = result.replace(f"${name}", variables[name])
     if "{{" in result or "\\" in result:
@@ -131,7 +132,7 @@ def expand_expressions(text: str) -> str:
             if end != -1:
                 expr_str = text[i + 2 : end]
                 try:
-                    val = evaluate(expr_str)
+                    val = evaluate_expression(expr_str)
                     result.append(str(val))
                 except ExprError:
                     result.append(text[i : end + 2])

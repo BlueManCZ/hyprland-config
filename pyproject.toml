@@ -1,6 +1,6 @@
 [project]
 name = "hyprland-config"
-version = "0.4.4"
+version = "0.4.5"
 description = "Round-trip parser and editor for Hyprland configuration files"
 requires-python = ">=3.12"
 license = "MIT"
@@ -42,4 +42,4 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "B", "UP"]

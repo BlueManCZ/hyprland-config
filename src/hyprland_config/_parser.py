@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from hyprland_config._bind import is_bind_keyword
 from hyprland_config._expr import expand_value
 from hyprland_config._model import (
     Assignment,
@@ -49,10 +50,6 @@ _STATIC_KEYWORD_NAMES = frozenset(
     )
 )
 
-# Hyprland generates bind variants combinatorially from flag chars (e, l, r, n, m, t, i, s, d, p).
-# A regex covers all current and future combinations without needing manual enumeration.
-_BIND_RE = re.compile(r"^bind[elnrmtisdp]*$")
-
 
 def is_keyword(name: str) -> bool:
     """Check whether a key name is a Hyprland keyword.
@@ -60,12 +57,7 @@ def is_keyword(name: str) -> bool:
     Covers all bind flag combinations (bind, binde, bindm, bindrl, etc.)
     as well as static keywords (monitor, env, exec, etc.).
     """
-    return name in _STATIC_KEYWORD_NAMES or _BIND_RE.match(name) is not None
-
-
-def is_bind_keyword(name: str) -> bool:
-    """Return True if *name* is a bind-variant keyword (bind, binde, bindm …)."""
-    return _BIND_RE.match(name) is not None
+    return name in _STATIC_KEYWORD_NAMES or is_bind_keyword(name)
 
 
 # Match one-line block: "name { key = value }"
@@ -320,11 +312,14 @@ def _follow_sources(doc: Document, seen: set[Path], *, lenient: bool = False) ->
 
         expanded_path = expand_value(node.path_str, doc.variables)
         relative_to = doc.path.parent if doc.path else None
-        resolved = resolve_source_paths(expanded_path, relative_to=relative_to)
-        node.resolved_paths = resolved
+        # Store resolved paths so cycle/exclusion checks don't have to redo
+        # the .resolve() syscall on every traversal.
+        node.resolved_paths = [
+            p.resolve() for p in resolve_source_paths(expanded_path, relative_to=relative_to)
+        ]
 
-        for rpath in resolved:
-            if rpath.resolve() in seen:
+        for rpath in node.resolved_paths:
+            if rpath in seen:
                 continue
             try:
                 sub_doc = parse_file(rpath, _seen=seen, follow_sources=True, lenient=lenient)

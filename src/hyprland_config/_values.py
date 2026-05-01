@@ -1,10 +1,5 @@
 """Config value conversion — between Python types and Hyprland config strings."""
 
-import re
-
-# Matches bare hex color tokens like "ff1a2b3c" (6 or 8 hex digits, no 0x prefix).
-_GRADIENT_HEX_RE = re.compile(r"^[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$")
-
 
 def coerce_config_value(value_str: str, type_name: str) -> bool | int | float | str:
     """Convert a config file string to the appropriate Python type.
@@ -26,25 +21,13 @@ def coerce_config_value(value_str: str, type_name: str) -> bool | int | float | 
 
 
 def value_to_conf(value: bool | int | float | str) -> str:
-    """Convert a Python value to Hyprland config format.
+    """Convert a Python value to a Hyprland config string.
 
-    Bools become ``"0"`` / ``"1"`` (IPC-style), not ``"true"`` / ``"false"``
-    (Hyprlang-style).  Both forms are accepted by Hyprland, and ``"0"`` / ``"1"``
-    is used here because HyprMod's managed config is applied via IPC reload.
-    Gradient hex tokens are normalized to include the ``0x`` prefix required
-    by config files (IPC returns bare hex like ``"ff1a2b3c"``).
+    Bools serialize as ``"true"`` / ``"false"`` (Hyprlang style). Other
+    types are passed through ``str()``. This matches what
+    :meth:`Document.set` writes into the file, so editors that read a
+    value, transform it in Python, and write it back round-trip cleanly.
     """
     if isinstance(value, bool):
-        return str(int(value))
-    s = str(value)
-    # Normalize gradient hex tokens: IPC returns colors without 0x prefix
-    # (e.g. "ff1a2b3c ff4d5e6f 45deg"), but config files need 0x prefixes.
-    if re.search(r"\b\d+deg\b", s):
-        parts = s.split()
-        normalized = []
-        for p in parts:
-            if not p.endswith("deg") and _GRADIENT_HEX_RE.match(p):
-                p = f"0x{p}"
-            normalized.append(p)
-        return " ".join(normalized)
-    return s
+        return "true" if value else "false"
+    return str(value)

@@ -31,10 +31,10 @@ class TestCoerceConfigValue:
 
 class TestValueToConf:
     def test_bool_true(self):
-        assert value_to_conf(True) == "1"
+        assert value_to_conf(True) == "true"
 
     def test_bool_false(self):
-        assert value_to_conf(False) == "0"
+        assert value_to_conf(False) == "false"
 
     def test_int(self):
         assert value_to_conf(42) == "42"
@@ -45,11 +45,9 @@ class TestValueToConf:
     def test_string(self):
         assert value_to_conf("hello") == "hello"
 
-    def test_gradient_normalizes_bare_hex(self):
-        assert value_to_conf("ff1a2b3c ff4d5e6f 45deg") == "0xff1a2b3c 0xff4d5e6f 45deg"
-
-    def test_gradient_preserves_existing_prefix(self):
-        assert value_to_conf("0xff1a2b3c 0xff4d5e6f 45deg") == "0xff1a2b3c 0xff4d5e6f 45deg"
-
-    def test_non_gradient_string_unchanged(self):
+    def test_passthrough_does_not_touch_strings(self):
+        # value_to_conf is intentionally pass-through for str — gradient
+        # normalization or other transforms belong to dedicated typed APIs
+        # (see Color/Gradient in _types.py).
+        assert value_to_conf("ff1a2b3c ff4d5e6f 45deg") == "ff1a2b3c ff4d5e6f 45deg"
         assert value_to_conf("ff1a2b3c") == "ff1a2b3c"

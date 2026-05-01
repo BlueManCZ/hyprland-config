@@ -40,7 +40,22 @@ class TestParseBind:
 class TestBindData:
     def test_to_line(self):
         bd = BindData(mods=["SUPER"], key="Q", dispatcher="killactive", arg="")
-        assert bd.to_line() == "bind = SUPER, Q, killactive,"
+        assert bd.to_line() == "bind = SUPER, Q, killactive"
+
+    def test_to_line_with_arg(self):
+        bd = BindData(mods=["SUPER"], key="Return", dispatcher="exec", arg="kitty")
+        assert bd.to_line() == "bind = SUPER, Return, exec, kitty"
+
+    def test_to_line_bindm_no_trailing_comma(self):
+        """Hyprland's ``bindm`` rejects a trailing comma with 'bind: too many args'."""
+        bd = BindData(
+            bind_type="bindm",
+            mods=["SUPER"],
+            key="mouse:272",
+            dispatcher="movewindow",
+            arg="",
+        )
+        assert bd.to_line() == "bindm = SUPER, mouse:272, movewindow"
 
     def test_combo_normalized(self):
         bd1 = BindData(mods=["SUPER", "SHIFT"], key="q")

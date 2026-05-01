@@ -2,79 +2,79 @@
 
 import pytest
 
-from hyprland_config import parse_string
-from hyprland_config._expr import ExprError, evaluate, expand_expressions
+from hyprland_config import evaluate_expression, parse_string
+from hyprland_config._expr import ExprError, expand_expressions
 
 
-class TestEvaluate:
+class TestEvaluateExpression:
     def test_simple_int(self):
-        assert evaluate("5") == 5
+        assert evaluate_expression("5") == 5
 
     def test_simple_float(self):
-        assert evaluate("3.14") == 3.14
+        assert evaluate_expression("3.14") == 3.14
 
     def test_addition(self):
-        assert evaluate("5 + 2") == 7
+        assert evaluate_expression("5 + 2") == 7
 
     def test_subtraction(self):
-        assert evaluate("10 - 3") == 7
+        assert evaluate_expression("10 - 3") == 7
 
     def test_multiplication(self):
-        assert evaluate("4 * 3") == 12
+        assert evaluate_expression("4 * 3") == 12
 
     def test_division(self):
-        assert evaluate("10 / 4") == 2.5
+        assert evaluate_expression("10 / 4") == 2.5
 
     def test_integer_division_result(self):
-        assert evaluate("10 / 2") == 5
-        assert isinstance(evaluate("10 / 2"), int)
+        assert evaluate_expression("10 / 2") == 5
+        assert isinstance(evaluate_expression("10 / 2"), int)
 
     def test_modulo(self):
-        assert evaluate("10 % 3") == 1
+        assert evaluate_expression("10 % 3") == 1
 
     def test_parentheses(self):
-        assert evaluate("(2 + 3) * 4") == 20
+        assert evaluate_expression("(2 + 3) * 4") == 20
 
     def test_nested_parentheses(self):
-        assert evaluate("((2 + 3) * (4 - 1))") == 15
+        assert evaluate_expression("((2 + 3) * (4 - 1))") == 15
 
     def test_operator_precedence(self):
-        assert evaluate("2 + 3 * 4") == 14
+        assert evaluate_expression("2 + 3 * 4") == 14
 
     def test_unary_minus(self):
-        assert evaluate("-5") == -5
+        assert evaluate_expression("-5") == -5
 
     def test_unary_minus_in_expr(self):
-        assert evaluate("10 + -3") == 7
+        assert evaluate_expression("10 + -3") == 7
 
     def test_unary_plus(self):
-        assert evaluate("+5") == 5
+        assert evaluate_expression("+5") == 5
 
     def test_division_by_zero(self):
         with pytest.raises(ExprError, match="division by zero"):
-            evaluate("1 / 0")
+            evaluate_expression("1 / 0")
 
     def test_modulo_by_zero(self):
         with pytest.raises(ExprError, match="modulo by zero"):
-            evaluate("1 % 0")
+            evaluate_expression("1 % 0")
 
     def test_empty_expression(self):
         with pytest.raises(ExprError, match="empty expression"):
-            evaluate("")
+            evaluate_expression("")
 
     def test_invalid_character(self):
         with pytest.raises(ExprError):
-            evaluate("5 & 3")
+            evaluate_expression("5 & 3")
 
     def test_missing_closing_paren(self):
         with pytest.raises(ExprError, match="missing closing parenthesis"):
-            evaluate("(2 + 3")
+            evaluate_expression("(2 + 3")
 
     def test_whitespace_handling(self):
-        assert evaluate("  5 + 2  ") == 7
+        assert evaluate_expression("  5 + 2  ") == 7
 
     def test_no_spaces(self):
-        assert evaluate("5+2") == 7
+        assert evaluate_expression("5+2") == 7
 
 
 class TestExpandExpressions:
