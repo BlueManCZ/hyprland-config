@@ -290,14 +290,56 @@ class TestHyprctlKeywordTranslation:
         )
         assert "active_opacity = 0.95," in out
 
-    def test_hyprctl_dispatch_unchanged(self) -> None:
-        # ``hyprctl dispatch`` still works in Lua mode — no translation
-        # needed.
+    def test_hyprctl_dispatch_collapses_to_native_dispatcher(self) -> None:
+        # ``hyprctl dispatch`` is reparsed as ``hl.dispatch(<ARG>)`` in
+        # Lua mode (0.55+), so the legacy space-separated form fails.
+        # Whole-command shape collapses to the native dispatcher,
+        # bypassing the shell roundtrip.
         out = serialize_lua(
             parse_string("bind = SUPER, T, exec, hyprctl dispatch togglefloating\n")
         )
-        assert 'hl.dsp.exec_cmd("hyprctl dispatch togglefloating")' in out
-        assert "hl.config(" not in out
+        assert 'hl.bind("SUPER + T", hl.dsp.window.float({ action = "toggle" }))' in out
+        assert "hl.dsp.exec_cmd(" not in out
+
+    def test_hyprctl_dispatch_dpms_whole_command(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, L, exec, hyprctl dispatch dpms off\n"))
+        assert 'hl.bind("SUPER + L", hl.dsp.dpms("off"))' in out
+
+    def test_hyprctl_dispatch_with_instance_flag(self) -> None:
+        # ``--instance N`` (and the ``-i`` short form) takes a value; the
+        # parser must skip past it to find ``dispatch``.
+        out = serialize_lua(
+            parse_string("bind = SUPER, L, exec, hyprctl --instance 0 dispatch dpms off\n")
+        )
+        assert 'hl.bind("SUPER + L", hl.dsp.dpms("off"))' in out
+
+    def test_hyprctl_dispatch_embedded_in_shell_rewritten(self) -> None:
+        # The shell wrapper (``sleep 1 && …``) carries timing semantics that
+        # have to survive the migration, so the inner ``dispatch`` is
+        # rewritten in place rather than collapsed to a native dispatcher.
+        out = serialize_lua(
+            parse_string(
+                "bind = SUPER, L, exec, sleep 1 && hyprctl --instance 0 dispatch dpms off\n"
+            )
+        )
+        assert (
+            'hl.dsp.exec_cmd("sleep 1 && hyprctl --instance 0 dispatch \'hl.dsp.dpms(\\"off\\")\'")'
+        ) in out
+
+    def test_hyprctl_dispatch_unknown_verb_left_alone(self) -> None:
+        # A verb that has no native translation isn't second-guessed; the
+        # original shell text passes through to ``hl.dsp.exec_cmd``.
+        out = serialize_lua(
+            parse_string("bind = SUPER, L, exec, hyprctl dispatch madeupverb foo\n")
+        )
+        assert 'hl.dsp.exec_cmd("hyprctl dispatch madeupverb foo")' in out
+
+    def test_bind_dpms_direct(self) -> None:
+        # ``dpms`` as a direct dispatcher (not wrapped in exec/hyprctl)
+        # used to land in the manual-conversion block; now it maps to
+        # ``hl.dsp.dpms`` like any other dispatcher.
+        out = serialize_lua(parse_string("bind = SUPER, L, dpms, off\n"))
+        assert 'hl.bind("SUPER + L", hl.dsp.dpms("off"))' in out
 
     def test_hyprctl_batch_falls_through_to_exec_cmd(self) -> None:
         # ``--batch`` payloads with embedded ``keyword`` would silently
@@ -356,6 +398,17 @@ class TestHyprctlKeywordTranslation:
         )
         assert 'hl.on("hyprland.shutdown", function()' in out
         assert "no_hardware_cursors = false," in out
+
+    def test_top_level_exec_hyprctl_dispatch_uses_hl_dispatch(self) -> None:
+        # Top-level exec runs imperatively inside ``hl.on(…, function() end)``,
+        # so a dispatcher object needs to be invoked via ``hl.dispatch``.
+        out = serialize_lua(parse_string("exec = hyprctl dispatch dpms on\n"))
+        assert 'hl.dispatch(hl.dsp.dpms("on"))' in out
+        assert "hyprctl dispatch" not in out
+
+    def test_top_level_exec_hyprctl_dispatch_embedded_rewritten(self) -> None:
+        out = serialize_lua(parse_string("exec = sleep 1 && hyprctl dispatch dpms on\n"))
+        assert ('hl.exec_cmd("sleep 1 && hyprctl dispatch \'hl.dsp.dpms(\\"on\\")\'")') in out
 
     def test_mixed_exec_keyword_and_shellout_share_one_block(self) -> None:
         # The batching logic that groups all exec lines into one

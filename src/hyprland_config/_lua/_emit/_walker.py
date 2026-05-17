@@ -49,11 +49,16 @@ from hyprland_config._core._model import (
 )
 from hyprland_config._hyprlang._bind import is_bind_keyword
 from hyprland_config._lua._emit._bind import emit_bind
+from hyprland_config._lua._emit._dispatchers import (
+    rewrite_hyprctl_dispatch_in_shell,
+    translate_dispatcher,
+)
 from hyprland_config._lua._emit._format import (
     coerce_value,
     emit_exec_cmd_call,
     emit_keyword_config_call,
     format_table,
+    parse_hyprctl_dispatch,
     parse_hyprctl_keyword,
     quote_string,
     set_nested,
@@ -340,6 +345,20 @@ def _process_line(line: Line, state: _EmitState, owning_doc: Document) -> None:
         _process_keyword(line, state, owning_doc)
 
 
+def _try_translate_hyprctl_dispatch(cmd: str) -> str | None:
+    """Return the ``hl.dsp.*`` snippet when *cmd* is a single ``hyprctl dispatch``.
+
+    Returns ``None`` if the shape doesn't match (anything more complex than a
+    single hyprctl invocation, e.g. ``sleep && hyprctl …``), or if the verb
+    has no native translation — leaving the caller to fall back to the
+    embedded-rewrite path.
+    """
+    parsed = parse_hyprctl_dispatch(cmd)
+    if parsed is None:
+        return None
+    return translate_dispatcher(parsed[0], parsed[1])
+
+
 def _process_keyword(line: Keyword, state: _EmitState, owning_doc: Document) -> None:
     """Route a Keyword line to the right accumulator or fallback bucket."""
     name = line.key
@@ -356,15 +375,19 @@ def _process_keyword(line: Keyword, state: _EmitState, owning_doc: Document) -> 
     # of their own managed config disable the marker via the state flag.
     if name in ("exec", "exec-once", "exec-shutdown"):
         keyword = parse_hyprctl_keyword(args)
+        dispatch_translation = _try_translate_hyprctl_dispatch(args)
         if keyword is not None:
             # exec/exec-once distinction is moot for a keyword setter
             # (idempotent on every call), so the inline marker comment
             # is dropped in that branch.
             translated = emit_keyword_config_call(*keyword, indent=1)
+        elif dispatch_translation is not None:
+            translated = f"hl.dispatch({dispatch_translation})"
         elif name == "exec-once" and state.emit_migration_markers:
-            translated = f"{emit_exec_cmd_call(args)}  -- TODO: was exec-once"
+            cmd_call = emit_exec_cmd_call(rewrite_hyprctl_dispatch_in_shell(args))
+            translated = f"{cmd_call}  -- TODO: was exec-once"
         else:
-            translated = emit_exec_cmd_call(args)
+            translated = emit_exec_cmd_call(rewrite_hyprctl_dispatch_in_shell(args))
         bucket = (
             state.current.exec_shutdown if name == "exec-shutdown" else state.current.exec_start
         )

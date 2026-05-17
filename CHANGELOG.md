@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-05-17
+
+### Added
+
+- `dpms` dispatcher support in Lua emitter
+- `hyprctl dispatch` translation for Lua mode (Hyprland 0.55+): whole-command `hyprctl dispatch VERB ARGS` collapses to native `hl.dsp.*` dispatchers; when embedded in shell scripts (e.g. `sleep 1 && hyprctl dispatch …`), the inner dispatch is rewritten in place to preserve timing semantics
+
 ## [0.6.3] - 2026-05-17
 
 ### Added
@@ -196,6 +203,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.6.4]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.6.4
 [0.6.3]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.6.3
 [0.6.2]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.6.2
 [0.6.1]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.6.1

@@ -249,6 +249,53 @@ def parse_hyprctl_keyword(cmd: str) -> tuple[str, str] | None:
     return key, " ".join(tokens[3:])
 
 
+# hyprctl flags that take a value (consume the next token); the rest are
+# bare switches. ``--batch`` is intentionally excluded — its trailing payload
+# is a ``;``-separated batch of commands, which falls outside the
+# "single hyprctl call" shape we can translate.
+_HYPRCTL_VALUE_FLAGS: frozenset[str] = frozenset({"--instance", "-i"})
+_HYPRCTL_BARE_FLAGS: frozenset[str] = frozenset({"-j", "-r", "-q", "--quiet"})
+
+
+def parse_hyprctl_dispatch(cmd: str) -> tuple[str, str] | None:
+    """Extract ``(verb, args)`` from a ``hyprctl [flags] dispatch VERB [ARGS]`` shell-out.
+
+    Returns ``None`` unless *cmd* is a single ``hyprctl ... dispatch``
+    invocation that runs as one shell command (no ``&&`` / ``||`` / ``;`` /
+    ``|`` / ``$(`` / backtick). Embedded use inside a larger shell command
+    is handled by :func:`rewrite_hyprctl_dispatch_in_shell` instead.
+
+    Lua-mode Hyprland (0.55+) reparses ``hyprctl dispatch <ARG>`` as
+    ``hl.dispatch(<ARG>)``, so the legacy space-separated ``dispatch VERB ARGS``
+    form fails. When the verb has a known native translation, callers
+    swap in an ``hl.dsp.<verb>(...)`` dispatcher to bypass the shell hop.
+    """
+    if any(op in cmd for op in ("&&", "||", ";", "|", "$(", "`", "\n")):
+        return None
+    try:
+        tokens = shlex.split(cmd, posix=True)
+    except ValueError:
+        return None
+    if not tokens or tokens[0] != "hyprctl":
+        return None
+    idx = 1
+    while idx < len(tokens) and tokens[idx] != "dispatch":
+        tok = tokens[idx]
+        if tok in _HYPRCTL_BARE_FLAGS:
+            idx += 1
+        elif tok in _HYPRCTL_VALUE_FLAGS:
+            idx += 2
+        else:
+            return None
+    if idx >= len(tokens) or tokens[idx] != "dispatch":
+        return None
+    idx += 1
+    if idx >= len(tokens):
+        return None
+    verb = tokens[idx]
+    return verb, " ".join(tokens[idx + 1 :])
+
+
 def emit_keyword_config_call(full_key: str, value: str, *, indent: int) -> str:
     """Render ``hl.config({KEY-AS-NESTED-TABLE = VALUE})`` for one keyword.
 

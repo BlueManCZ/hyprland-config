@@ -6,12 +6,14 @@ Shared by the bind emitter (config-side) and :func:`dispatch_to_lua`
 (runtime live-apply side) so both sides produce the same translation.
 """
 
+import re
 from collections.abc import Callable
 
 from hyprland_config._lua._emit._format import (
     coerce_value,
     emit_keyword_setter_closure,
     format_value,
+    parse_hyprctl_dispatch,
     parse_hyprctl_keyword,
     quote_string,
 )
@@ -367,6 +369,7 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     # Quoted-string passthrough
     "submap": lambda arg, _: f"hl.dsp.submap({quote_string(arg.strip())})",
     "layoutmsg": lambda arg, _: f"hl.dsp.layout({quote_string(arg.strip())})",
+    "dpms": lambda arg, _: f"hl.dsp.dpms({quote_string(arg.strip())})",
     # Parameterized
     "workspace": lambda arg, _: _dispatch_workspace(arg),
     "movetoworkspace": lambda arg, _: _dispatch_movetoworkspace(arg),
@@ -409,6 +412,41 @@ _ADDRESS_AWARE: frozenset[str] = frozenset(
 )
 
 
+_SHELL_SEGMENT_RE = re.compile(r"(\s*(?:&&|\|\||;)\s*)")
+
+
+def rewrite_hyprctl_dispatch_in_shell(cmd: str) -> str:
+    """Rewrite each ``hyprctl [flags] dispatch VERB ARGS`` segment in *cmd* to
+    use Lua-call syntax, returning the modified shell command.
+
+    Lua-mode Hyprland parses ``hyprctl dispatch <ARG>`` as ``hl.dispatch(<ARG>)``,
+    breaking the legacy space-separated form. This helper preserves the shell
+    wrapper (so patterns like ``sleep 1 && hyprctl dispatch …`` keep their
+    timing semantics) while swapping just the inner verb+args for a quoted
+    Lua expression that the new parser accepts.
+
+    Segments without a recognized ``hyprctl dispatch`` shape, or with a verb
+    that has no native ``hl.dsp.*`` translation, are returned unchanged.
+    """
+    parts = _SHELL_SEGMENT_RE.split(cmd)
+    for i, part in enumerate(parts):
+        if not part or _SHELL_SEGMENT_RE.fullmatch(part):
+            continue
+        parsed = parse_hyprctl_dispatch(part)
+        if parsed is None:
+            continue
+        verb, args = parsed
+        translation = translate_dispatcher(verb, args)
+        if translation is None:
+            continue
+        prefix, sep, _ = part.rpartition("dispatch")
+        # ``translation`` is double-quoted Lua source; wrap with shell
+        # single-quotes so the outer Lua string (when emitted into
+        # ``hl.dsp.exec_cmd("…")``) doesn't need to escape every inner quote.
+        parts[i] = f"{prefix}{sep} '{translation}'"
+    return "".join(parts)
+
+
 def translate_dispatcher(name: str, arg: str, *, is_mouse: bool = False) -> str | None:
     """Translate ``(dispatcher_name, arg)`` to a Lua ``hl.dsp.*`` call.
 
@@ -417,13 +455,23 @@ def translate_dispatcher(name: str, arg: str, *, is_mouse: bool = False) -> str 
     (runtime live-apply side) so both produce the same translation.
     """
     if name == "exec":
-        # ``exec, hyprctl keyword …`` translates to an inline closure that
-        # calls ``hl.config({...})`` — the keyword IPC verb is rejected in
-        # Lua mode. Other execs pass through as plain ``hl.dsp.exec_cmd``.
+        # Lua-mode rejects both the ``keyword`` and ``dispatch`` IPC verbs
+        # invoked via ``hyprctl``. Three layered translations:
+        #   1. Whole arg is ``hyprctl keyword …`` → inline ``hl.config`` closure.
+        #   2. Whole arg is ``hyprctl dispatch VERB ARGS`` → native dispatcher,
+        #      bypassing the shell roundtrip entirely.
+        #   3. Otherwise, rewrite any embedded ``hyprctl dispatch …`` syntax
+        #      inside the shell string so the residual shell wrapper still
+        #      drives a dispatch that the Lua parser accepts.
         keyword = parse_hyprctl_keyword(arg)
         if keyword is not None:
             return emit_keyword_setter_closure(*keyword)
-        return f"hl.dsp.exec_cmd({quote_string(arg)})"
+        dispatch = parse_hyprctl_dispatch(arg)
+        if dispatch is not None:
+            translation = translate_dispatcher(dispatch[0], dispatch[1])
+            if translation is not None:
+                return translation
+        return f"hl.dsp.exec_cmd({quote_string(rewrite_hyprctl_dispatch_in_shell(arg))})"
     handler = _DISPATCHERS.get(name)
     if handler is None:
         return None
