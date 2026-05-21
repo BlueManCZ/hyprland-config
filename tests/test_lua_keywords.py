@@ -58,6 +58,29 @@ class TestMonitorKeyword:
         assert "position" not in out
         assert "scale" not in out
 
+    def test_monitor_with_empty_output_name(self) -> None:
+        """Empty output (wildcard) should emit output = "" in Lua."""
+        out = serialize_lua(parse_string("monitor = ,preferred,auto,1\n"))
+        assert "hl.monitor({" in out
+        assert 'output = ""' in out
+        assert 'mode = "preferred"' in out
+        assert 'position = "auto"' in out
+        assert "scale = 1" in out
+
+    def test_monitor_empty_output_with_disable(self) -> None:
+        """Empty output with disable should NOT emit output field."""
+        out = serialize_lua(parse_string("monitor = ,disable\n"))
+        assert "hl.monitor({" in out
+        assert "disabled = true" in out
+        assert "output" not in out  # Should be omitted for disable short-form
+
+    def test_monitor_named_output_with_disable(self) -> None:
+        """Named output with disable SHOULD still emit output field."""
+        out = serialize_lua(parse_string("monitor = DP-1,disable\n"))
+        assert "hl.monitor({" in out
+        assert 'output = "DP-1"' in out
+        assert "disabled = true" in out
+
 
 class TestBezierKeyword:
     def test_bezier_emits_hl_curve(self) -> None:

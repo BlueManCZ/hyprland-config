@@ -38,15 +38,26 @@ def emit_monitor(args: str) -> str:
     Hyprlang's ``monitor = OUTPUT, disable`` short-form maps to the
     Lua API's ``disabled = true`` boolean field (the Lua side rejects
     ``mode = "disable"`` — confirmed against Hyprland 0.55+).
+
+    Empty output name (e.g. ``monitor = ,preferred,auto,1``) is valid
+    Hyprlang wildcard syntax and is preserved as ``output = ""``.
     """
     parts = split_csv(args)
     table: dict[str, Any] = {}
-    if parts and parts[0]:
-        table["output"] = parts[0]
-    # Short-form: ``OUTPUT, disable`` (no positional args after).
+
+    # Short-form: ``OUTPUT, disable`` (or ``,disable`` with empty output).
+    # Handle this FIRST - when disabled, we don't emit the output field at all, 
+    # otherwise all monitors are disabled because empty output is a fallback.
     if len(parts) == 2 and parts[1].strip().lower() == "disable":
+        if parts[0]:  # Only add output if it's not empty
+            table["output"] = parts[0]
         table["disabled"] = True
         return f"hl.monitor({format_table(table, indent=0)})"
+
+    # Normal form: include output field even if empty (wildcard syntax).
+    if parts:
+        table["output"] = parts[0]  # Empty string is valid for wildcard/fallback
+
     if len(parts) >= 2:
         table["mode"] = parts[1]
     if len(parts) >= 3:
