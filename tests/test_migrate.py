@@ -530,6 +530,42 @@ class TestMigrateV055:
         warnings = check_deprecated(doc, min_version="0.55")
         assert warnings == []
 
+    def test_dispatcher_togglesplit_to_layoutmsg(self):
+        doc = parse_string("bind = $mainMod, J, togglesplit\n")
+        migrate(doc)
+        out = serialize_hyprlang(doc)
+        assert "layoutmsg, togglesplit" in out
+        assert "togglesplit" in out
+        assert out.count("togglesplit") == 1
+
+    def test_dispatcher_swapsplit_to_layoutmsg(self):
+        doc = parse_string("bind = $mainMod, K, swapsplit\n")
+        migrate(doc)
+        assert "layoutmsg, swapsplit" in serialize_hyprlang(doc)
+
+    def test_dispatcher_splitratio_to_layoutmsg_with_args(self):
+        doc = parse_string("binde = $mainMod, minus, splitratio, -0.1\n")
+        migrate(doc)
+        out = serialize_hyprlang(doc)
+        assert "layoutmsg, splitratio -0.1" in out
+
+    def test_dispatcher_migration_skips_unrelated_binds(self):
+        doc = parse_string("bind = SUPER, Q, killactive\n")
+        migrate(doc)
+        assert "killactive" in serialize_hyprlang(doc)
+        assert "layoutmsg" not in serialize_hyprlang(doc)
+
+    def test_dispatcher_deprecation_detected(self):
+        doc = parse_string("bind = $mainMod, J, togglesplit\n")
+        warnings = check_deprecated(doc)
+        assert any("togglesplit" in w.message for w in warnings)
+
+    def test_dispatcher_deprecation_not_flagged_after_migrate(self):
+        doc = parse_string("bind = $mainMod, J, togglesplit\n")
+        migrate(doc)
+        warnings = check_deprecated(doc)
+        assert not any("togglesplit" in w.message for w in warnings)
+
     def test_from_version_skips_055_for_older_target(self):
         # User on Hyprland 0.54 should not get their pseudotile removed.
         doc = parse_string("dwindle {\n    pseudotile = 1\n}\n")

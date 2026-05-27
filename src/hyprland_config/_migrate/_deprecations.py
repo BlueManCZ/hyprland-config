@@ -38,6 +38,7 @@ class _DeprecationRule:
     """Internal rule definition for matching deprecated config patterns."""
 
     key: str = ""
+    key_pattern: str = ""  # regex pattern for key matching (when exact key isn't enough)
     value_pattern: str = ""  # regex pattern for value matching
 
     # Metadata
@@ -49,6 +50,10 @@ class _DeprecationRule:
     @cached_property
     def deprecated_ver(self) -> tuple[int, ...]:
         return parse_version(self.version_deprecated)
+
+    @cached_property
+    def key_re(self) -> re.Pattern[str] | None:
+        return re.compile(self.key_pattern) if self.key_pattern else None
 
     @cached_property
     def value_re(self) -> re.Pattern[str] | None:
@@ -180,6 +185,17 @@ _RULES: list[_DeprecationRule] = [
         version_removed="0.55",
         suggestion="Remove this option",
     ),
+    # v0.55: togglesplit/swapsplit/splitratio moved to layoutmsg
+    *[
+        _DeprecationRule(
+            key_pattern=r"bind\w*",
+            value_pattern=rf"^[^,]+,\s*[^,]+,\s*{dispatcher}\b",
+            message=f"{dispatcher} dispatcher was moved to layoutmsg",
+            version_deprecated="0.55",
+            suggestion=f"Use layoutmsg, {dispatcher} instead",
+        )
+        for dispatcher in ("togglesplit", "swapsplit", "splitratio")
+    ],
 ]
 
 
@@ -246,11 +262,16 @@ def _line_key(line: Line) -> str:
 
 def _rule_matches(rule: _DeprecationRule, line: Line) -> bool:
     """Check if a deprecation rule matches a line."""
-    if rule.key and isinstance(line, KeyValueLine):
+    if not isinstance(line, KeyValueLine):
+        return False
+    if rule.key:
         if line.full_key != rule.key and line.key != rule.key:
             return False
-        if rule.value_re is not None:
-            return bool(rule.value_re.search(line.value))
-        return True
-
-    return False
+    elif rule.key_re is not None:
+        if not rule.key_re.fullmatch(line.key):
+            return False
+    else:
+        return False
+    if rule.value_re is not None:
+        return bool(rule.value_re.search(line.value))
+    return True

@@ -170,6 +170,35 @@ def _make_move_migration(old_full_key: str, new_full_key: str) -> Callable[[Docu
     return migration
 
 
+_LAYOUTMSG_DISPATCHERS = frozenset({"togglesplit", "swapsplit", "splitratio"})
+
+
+def _migrate_dispatchers_to_layoutmsg(doc: Document) -> bool:
+    """Rewrite ``bind = …, togglesplit`` → ``bind = …, layoutmsg, togglesplit``.
+
+    Hyprland 0.55 moved ``togglesplit``, ``swapsplit``, and ``splitratio``
+    from standalone dispatchers to ``layoutmsg`` subcommands.
+    """
+
+    def predicate(line: KeyValueLine) -> bool:
+        if not line.key.startswith("bind"):
+            return False
+        parts = line.value.split(",", 3)
+        return len(parts) >= 3 and parts[2].strip() in _LAYOUTMSG_DISPATCHERS
+
+    def transform(line: KeyValueLine) -> None:
+        parts = line.value.split(",", 3)
+        old_dispatcher = parts[2].strip()
+        old_args = parts[3].strip() if len(parts) > 3 else ""
+        layoutmsg_args = f"{old_dispatcher} {old_args}".strip()
+        parts[2] = " layoutmsg"
+        parts[3:] = [f" {layoutmsg_args}"]
+        line.value = ",".join(parts)
+        line.update_raw()
+
+    return transform_lines(doc, predicate, transform)
+
+
 _MIGRATIONS: list[_Migration] = sorted(
     [
         _Migration(
@@ -231,6 +260,12 @@ _MIGRATIONS: list[_Migration] = sorted(
             "0.54",
             "0.55",
             _make_delete_migration("decoration:shadow:ignore_window"),
+        ),
+        _Migration(
+            "Move togglesplit/swapsplit/splitratio dispatchers to layoutmsg",
+            "0.54",
+            "0.55",
+            _migrate_dispatchers_to_layoutmsg,
         ),
     ],
     key=lambda m: m.from_ver,

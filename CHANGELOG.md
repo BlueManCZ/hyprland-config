@@ -5,6 +5,12 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2026-05-27
+
+### Added
+
+- `togglesplit`, `swapsplit`, and `splitratio` dispatcher → `layoutmsg` migration and deprecation warnings for Hyprland 0.55
+
 ## [0.9.4] - 2026-05-27
 
 ### Fixed
@@ -302,6 +308,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.5]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.5
 [0.9.4]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.4
 [0.9.3]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.3
 [0.9.2]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.2
