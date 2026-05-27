@@ -64,12 +64,19 @@ LAYER_BOOL_EFFECTS: frozenset[str] = frozenset(
 WINDOWRULE_V3_VERSION: tuple[int, int] = (0, 53)
 LAYERRULE_V3_VERSION: tuple[int, int] = (0, 54)
 
+# v2 effects that were removed in v3 and replaced by a different effect
+# with a fixed argument. The migration uses the full ``(name, args)`` pair
+# directly instead of going through the rename+bool-fill path.
+V2_EFFECT_REPLACEMENTS: dict[str, tuple[str, str]] = {
+    "noborder": ("border_size", "0"),
+    "norounding": ("rounding", "0"),
+}
+
 # v2 → v3 windowrule effect renames. Anything absent is unchanged in v3
 # (including custom plugin actions).
 V2_TO_V3_EFFECT: dict[str, str] = {
     "noblur": "no_blur",
     "noshadow": "no_shadow",
-    "noborder": "no_border",
     "noanim": "no_anim",
     "nodim": "no_dim",
     "nofocus": "no_focus",
@@ -78,7 +85,6 @@ V2_TO_V3_EFFECT: dict[str, str] = {
     "noshortcutsinhibit": "no_shortcuts_inhibit",
     "noscreenshare": "no_screen_share",
     "novrr": "no_vrr",
-    "norounding": "no_rounding",
     "nomaxsize": "no_max_size",
     "stayfocused": "stay_focused",
     "idleinhibit": "idle_inhibit",

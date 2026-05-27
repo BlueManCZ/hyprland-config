@@ -23,6 +23,7 @@ from hyprland_config._core._model import (
 )
 from hyprland_config._core._rule_split import split_top_level
 from hyprland_config._core._rules import (
+    V2_EFFECT_REPLACEMENTS,
     V2_TO_V3_EFFECT,
     V2_TO_V3_MATCHER,
     V3_BOOL_EFFECTS,
@@ -31,6 +32,18 @@ from hyprland_config._core._values import parse_hyprlang_bool
 from hyprland_config._migrate._helpers import transform_lines
 
 _V2_PREFIXES = ("title:", "class:", "xwayland:", "floating:", "fullscreen:")
+
+# Every known v2 matcher key. Used by :func:`_split_v2_matchers` to
+# distinguish inter-matcher whitespace from spaces inside regex values.
+_V2_MATCHER_KEYS: frozenset[str] = (
+    frozenset(V2_TO_V3_MATCHER)
+    | frozenset(p.rstrip(":") for p in _V2_PREFIXES)
+    | frozenset({"workspace", "tag", "focus"})
+)
+
+_V2_KEY_SPLIT_RE: re.Pattern[str] = re.compile(
+    r"[\s,]+(?=~?(?:" + "|".join(sorted(_V2_MATCHER_KEYS, key=len, reverse=True)) + r"):)"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -76,9 +89,18 @@ _V3_EFFECT_NAMES: frozenset[str] = V3_BOOL_EFFECTS | frozenset(
 def _split_v2_matchers(raw: str) -> list[str]:
     """Split a v2 matcher string into per-matcher tokens.
 
-    v2 accepted commas and whitespace as separators.
+    v2 accepted commas and whitespace as separators. We split on commas
+    unconditionally, and on whitespace only when it precedes a known v2
+    matcher key — this preserves spaces inside regex values like
+    ``title:^(My App)$``.
     """
-    return [tok for tok in re.split(r"[\s,]+", raw.strip()) if tok]
+    result: list[str] = []
+    for comma_tok in raw.split(","):
+        for sub_tok in _V2_KEY_SPLIT_RE.split(comma_tok.strip()):
+            sub_tok = sub_tok.strip()
+            if sub_tok:
+                result.append(sub_tok)
+    return result
 
 
 def _v2_body_to_v3(body: str) -> str:
@@ -100,11 +122,17 @@ def _v2_body_to_v3(body: str) -> str:
 
     # Split the action into name + args (e.g. "size 1920 1080").
     action_name, _, action_args = action.partition(" ")
-    new_name = V2_TO_V3_EFFECT.get(action_name, action_name)
-    args = action_args.strip()
-    # Boolean effects in v2 had no args; in v3 they require ``on``.
-    if not args and new_name in V3_BOOL_EFFECTS:
-        args = "on"
+
+    # Some v2 effects were removed entirely and replaced by a
+    # different effect with fixed args (e.g. noborder → border_size 0).
+    if action_name in V2_EFFECT_REPLACEMENTS:
+        new_name, args = V2_EFFECT_REPLACEMENTS[action_name]
+    else:
+        new_name = V2_TO_V3_EFFECT.get(action_name, action_name)
+        args = action_args.strip()
+        # Boolean effects in v2 had no args; in v3 they require ``on``.
+        if not args and new_name in V3_BOOL_EFFECTS:
+            args = "on"
     effect = f"{new_name} {args}".strip() if args else new_name
 
     matcher_tokens: list[str] = []

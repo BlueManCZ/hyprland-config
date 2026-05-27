@@ -311,6 +311,36 @@ class TestMigrate:
         assert "title:float" not in out
         assert "windowrule = match:class ^(firefox)$, float on" in out
 
+    def test_migrate_windowrulev2_to_v3_regex_with_spaces(self):
+        doc = parse_string("windowrulev2 = float, title:(^Settings — Albert$)\n")
+        migrate(doc)
+        out = serialize_hyprlang(doc)
+        assert "match:title (^Settings — Albert$)" in out
+        assert "float on" in out
+
+    def test_migrate_windowrulev2_to_v3_regex_single_space(self):
+        doc = parse_string("windowrulev2 = center,class:^(jetbrains-.*)$,title:^( )$,floating:1\n")
+        migrate(doc)
+        out = serialize_hyprlang(doc)
+        assert "match:title ^( )$" in out
+        assert "match:class ^(jetbrains-.*)$" in out
+        assert "match:float 1" in out
+        assert "center on" in out
+
+    def test_migrate_windowrulev2_to_v3_noborder_becomes_border_size_0(self):
+        doc = parse_string("windowrulev2 = noborder, class:^(jetbrains-.*)$\n")
+        migrate(doc)
+        out = serialize_hyprlang(doc)
+        assert "border_size 0" in out
+        assert "no_border" not in out
+
+    def test_migrate_windowrulev2_to_v3_norounding_becomes_rounding_0(self):
+        doc = parse_string("windowrulev2 = norounding, class:^(kitty)$\n")
+        migrate(doc)
+        out = serialize_hyprlang(doc)
+        assert "rounding 0" in out
+        assert "no_rounding" not in out
+
     def test_migrate_windowrulev2_real_v2_with_title_matcher_not_corrupted(self):
         # A real v2 line whose only matcher happens to be ``title:foo``
         # (no ``match:`` token anywhere) must NOT be treated as
