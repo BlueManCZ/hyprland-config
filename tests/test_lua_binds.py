@@ -76,6 +76,43 @@ class TestModifierNormalization:
         assert 'var_mainMod .. " + SHIFT + Q"' in out
 
 
+class TestModifierComboVariables:
+    """A variable whose value is a modifier combo (``$shiftMod = $mainMod SHIFT``)
+    must re-join with `` + `` in its definition. Without it the variable expands
+    to the space-separated ``SUPER SHIFT`` blob, which ``hl.bind`` reads as a
+    single unknown keysym. https://github.com/BlueManCZ/hyprmod/issues/52
+    """
+
+    def test_var_plus_literal_modifier_joins_with_plus(self) -> None:
+        out = serialize_lua(
+            parse_string(
+                "$mainMod = SUPER\n$shiftMod = $mainMod SHIFT\nbind = $shiftMod, Q, killactive,\n"
+            )
+        )
+        assert 'var_shiftMod = var_mainMod .. " + SHIFT"' in out
+
+    def test_nested_modifier_var_resolves_recursively(self) -> None:
+        out = serialize_lua(
+            parse_string(
+                "$mainMod = SUPER\n$shiftMod = $mainMod SHIFT\n$ctrlMod = $shiftMod CTRL\n"
+                "bind = $ctrlMod, Q, killactive,\n"
+            )
+        )
+        assert 'var_ctrlMod = var_shiftMod .. " + CTRL"' in out
+
+    def test_single_modifier_var_unchanged(self) -> None:
+        # One token needs no joining; the bare string stays as-is.
+        out = serialize_lua(parse_string("$mainMod = SUPER\nbind = $mainMod, Q, killactive,\n"))
+        assert 'var_mainMod = "SUPER"' in out
+
+    def test_non_modifier_multiword_var_keeps_spaces(self) -> None:
+        # ``$term`` is a command, not a modmask — its spaces must survive.
+        out = serialize_lua(
+            parse_string("$term = kitty --class foo\nbind = SUPER, Return, exec, $term\n")
+        )
+        assert 'var_term = "kitty --class foo"' in out
+
+
 class TestBindFlags:
     def test_binde_repeating(self) -> None:
         out = serialize_lua(parse_string("binde = , XF86AudioRaiseVolume, exec, up\n"))

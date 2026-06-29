@@ -44,6 +44,16 @@ _MOD_ALIASES: tuple[tuple[str, str], ...] = (
 _MOD_ORDER: tuple[str, ...] = ("SUPER", "CTRL", "ALT", "SHIFT", "CAPS", "MOD2", "MOD3", "MOD5")
 
 
+def is_modifier_token(token: str) -> bool:
+    """Whether *token* names one or more bind modifiers (``SUPER``, ``SUPERSHIFT``).
+
+    Matches the substring rule of legacy ``stringToModMask`` used by
+    :func:`_normalize_mods`, so concatenated and mixed-case forms count too.
+    """
+    upper = token.upper()
+    return any(name in upper for name, _ in _MOD_ALIASES)
+
+
 def _normalize_mods(mods: list[str]) -> list[str]:
     """Decompose Hyprlang modifier tokens into canonical Lua mod tokens.
 

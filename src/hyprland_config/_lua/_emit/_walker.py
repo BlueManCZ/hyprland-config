@@ -61,7 +61,7 @@ from hyprland_config._core._model import (
 from hyprland_config._core._rules import LAYER_BOOL_EFFECTS, V3_BOOL_EFFECTS
 from hyprland_config._core._values import parse_hyprlang_bool
 from hyprland_config._hyprlang._bind import is_bind_keyword
-from hyprland_config._lua._emit._bind import emit_bind
+from hyprland_config._lua._emit._bind import emit_bind, is_modifier_token
 from hyprland_config._lua._emit._conditional import translate_expression
 from hyprland_config._lua._emit._dispatchers import translate_dispatcher
 from hyprland_config._lua._emit._format import (
@@ -486,6 +486,30 @@ def _drain_open_conditionals(state: _EmitState) -> None:
                 state.skipped.append(body_line.raw.rstrip("\n").strip())
 
 
+def _is_modifier_combo(value: str, scope: dict[str, str], seen: frozenset[str]) -> bool:
+    """Whether *value* is a whitespace-joined run of bind modifiers.
+
+    Each token must be a modifier name (``SUPER``, ``SHIFT``, …) or a ``$ref``
+    to a variable whose value is itself modifier-only, resolved against *scope*.
+    *seen* breaks reference cycles. Variables like ``$shiftMod = $mainMod SHIFT``
+    qualify; ``$mainMod SHIFT`` then re-joins with `` + `` so the value stays a
+    valid modmask when spliced into an ``hl.bind`` modifier string (Hyprland's
+    Lua API rejects the space-separated ``SUPER SHIFT`` form as a keysym).
+    """
+    tokens = value.split()
+    if not tokens:
+        return False
+    for token in tokens:
+        if token.startswith("$"):
+            name = token[1:]
+            ref = scope.get(name)
+            if name in seen or ref is None or not _is_modifier_combo(ref, scope, seen | {name}):
+                return False
+        elif not is_modifier_token(token):
+            return False
+    return True
+
+
 def _format_var_preamble(
     names_values: dict[str, str], scope: dict[str, str], *, local: bool
 ) -> str:
@@ -505,6 +529,12 @@ def _format_var_preamble(
     prefix = "local " if local else ""
     lines: list[str] = []
     for name, value in names_values.items():
+        # A multi-token modifier variable (``$shiftMod = $mainMod SHIFT``) has to
+        # re-join with `` + `` so it reads as a modmask, not a single keysym, when
+        # it lands in an ``hl.bind`` modifier string.
+        tokens = value.split()
+        if len(tokens) >= 2 and _is_modifier_combo(value, scope, frozenset({name})):
+            value = " + ".join(tokens)
         rendered_value = expand_value_lua(value, scope, {})
         coerced = coerce_value(rendered_value)
         lines.append(f"{prefix}{lua_var_name(name)} = {format_value(coerced, 0)}")

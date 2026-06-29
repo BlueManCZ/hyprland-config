@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Workspace `layoutopt` rules now migrate to a nested `layout_opts` table (`layoutopt:direction:right` becomes `layout_opts = { direction = "right" }`) instead of a flat `layoutopt = "direction:right"` string that `hl.workspace_rule` rejects. Multiple `layoutopt:` entries collect into one table and fan back out on the reverse path. https://github.com/BlueManCZ/hyprmod/issues/53
+- A variable whose value is a modifier combo (`$shiftMod = $mainMod SHIFT`) now re-joins with ` + ` in its Lua definition (`var_mainMod .. " + SHIFT"`). Previously the space-separated form leaked through, so a bind using `$shiftMod` expanded to the blob `SUPER SHIFT` that `hl.bind` reads as a single unknown keysym. Nested modifier variables resolve recursively; non-modifier multi-word variables (commands, paths) keep their spaces. https://github.com/BlueManCZ/hyprmod/issues/52
 
 ## [0.9.9] - 2026-06-21
 
