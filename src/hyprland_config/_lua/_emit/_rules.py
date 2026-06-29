@@ -17,7 +17,12 @@ from hyprland_config._lua._emit._format import (
     split_csv,
     to_lua_expr,
 )
-from hyprland_config._lua._workspace_rules import hyprlang_field_to_lua
+from hyprland_config._lua._workspace_rules import (
+    LAYOUTOPT_HYPRLANG_NAME,
+    LAYOUTOPT_LUA_NAME,
+    hyprlang_field_to_lua,
+    parse_layoutopt,
+)
 
 
 def add_block_rule_field(buffer: dict[str, Any], key: str, value: str) -> None:
@@ -220,6 +225,12 @@ def emit_workspace_rule(args: str) -> str:
     for token in parts[1:]:
         key, sep, value = token.partition(":")
         if not sep:
+            continue
+        if key.strip() == LAYOUTOPT_HYPRLANG_NAME:
+            opt = parse_layoutopt(value.strip())
+            if opt is not None:
+                opt_key, opt_value = opt
+                table.setdefault(LAYOUTOPT_LUA_NAME, {})[opt_key] = opt_value
             continue
         lua_name, lua_value = hyprlang_field_to_lua(key.strip(), value.strip())
         table[lua_name] = lua_value

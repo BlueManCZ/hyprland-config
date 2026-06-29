@@ -21,8 +21,10 @@ from hyprland_config import (
     serialize_lua,
 )
 from hyprland_config._lua._workspace_rules import (
+    format_layout_opts,
     hyprlang_field_to_lua,
     lua_field_to_hyprlang,
+    parse_layoutopt,
 )
 
 
@@ -99,6 +101,31 @@ class TestEmitWorkspaceFields:
         # the user can see what they wrote.
         out = serialize_lua(parse_string("workspace = 1, plugin_field:42\n"))
         assert "plugin_field = 42" in out
+
+
+class TestEmitWorkspaceLayoutOpts:
+    """Hyprlang ``layoutopt:key:value`` becomes a nested ``layout_opts`` table."""
+
+    def test_single_layoutopt_becomes_nested_table(self) -> None:
+        out = serialize_lua(parse_string("workspace = 1, layoutopt:direction:right\n"))
+        assert "layout_opts = {" in out
+        assert 'direction = "right"' in out
+        # The flat pass-through form must not appear.
+        assert 'layoutopt = "direction:right"' not in out
+
+    def test_multiple_layoutopts_collect_into_one_table(self) -> None:
+        out = serialize_lua(
+            parse_string("workspace = 1, layoutopt:direction:right, layoutopt:foo:5\n")
+        )
+        assert 'direction = "right"' in out
+        assert "foo = 5" in out
+        # Only one layout_opts table, not two.
+        assert out.count("layout_opts") == 1
+
+    def test_layout_field_stays_flat_string(self) -> None:
+        # ``layout`` (not ``layoutopt``) is a plain string field, untouched.
+        out = serialize_lua(parse_string("workspace = 1, layout:scrolling\n"))
+        assert 'layout = "scrolling"' in out
 
 
 class TestEmitWorkspaceBoolInversion:
@@ -198,6 +225,27 @@ class TestReadWorkspaceFields:
 
 
 @requires_lua
+class TestReadWorkspaceLayoutOpts:
+    """Lua ``layout_opts`` tables fan back out to ``layoutopt:key:value`` tokens."""
+
+    def test_single_option(self, tmp_path: Path) -> None:
+        out = _lua_to_hyprlang(
+            tmp_path,
+            "hl.workspace_rule({workspace = 1, layout_opts = {direction = 'right'}})",
+        )
+        assert "layoutopt:direction:right" in out
+        assert "layout_opts" not in out
+
+    def test_multiple_options_each_get_a_token(self, tmp_path: Path) -> None:
+        out = _lua_to_hyprlang(
+            tmp_path,
+            "hl.workspace_rule({workspace = 1, layout_opts = {direction = 'right', foo = 5}})",
+        )
+        assert "layoutopt:direction:right" in out
+        assert "layoutopt:foo:5" in out
+
+
+@requires_lua
 class TestReadWorkspaceBoolInversion:
     """Lua ``no_*`` fields flip to positive Hyprlang sense."""
 
@@ -254,7 +302,7 @@ class TestWorkspaceRoundTrip:
             "workspace = 1, monitor:DP-2, default:true, persistent:true, "
             "gapsin:5 10 5 10, gapsout:0, bordersize:2, border:false, "
             "rounding:false, shadow:true, decorate:false, defaultName:work, "
-            "on-created-empty:kitty\n"
+            "on-created-empty:kitty, layout:scrolling, layoutopt:direction:right\n"
         )
         # Hyprlang → Lua
         lua_path = tmp_path / "out.lua"
@@ -276,6 +324,8 @@ class TestWorkspaceRoundTrip:
             "decorate:false",
             "defaultName:work",
             "on-created-empty:kitty",
+            "layout:scrolling",
+            "layoutopt:direction:right",
         ]:
             assert token in back, f"{token!r} missing from round-trip output:\n{back}"
 
@@ -343,3 +393,19 @@ class TestTranslationHelpers:
         assert hyprlang_field_to_lua("plugin_x", "42") == ("plugin_x", 42)
         assert hyprlang_field_to_lua("plugin_x", "true") == ("plugin_x", True)
         assert hyprlang_field_to_lua("plugin_x", "free text") == ("plugin_x", "free text")
+
+    def test_parse_layoutopt_splits_key_and_value(self) -> None:
+        assert parse_layoutopt("direction:right") == ("direction", "right")
+
+    def test_parse_layoutopt_coerces_numeric_value(self) -> None:
+        assert parse_layoutopt("foo:5") == ("foo", 5)
+
+    def test_parse_layoutopt_rejects_missing_inner_colon(self) -> None:
+        # No ``key:value`` colon — Hyprland treats this as a malformed rule.
+        assert parse_layoutopt("direction") is None
+
+    def test_format_layout_opts_sorts_and_renders_tokens(self) -> None:
+        assert format_layout_opts({"foo": 5, "direction": "right"}) == [
+            "layoutopt:direction:right",
+            "layoutopt:foo:5",
+        ]

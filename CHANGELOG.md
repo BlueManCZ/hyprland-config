@@ -5,6 +5,12 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] - 2026-06-29
+
+### Fixed
+
+- Workspace `layoutopt` rules now migrate to a nested `layout_opts` table (`layoutopt:direction:right` becomes `layout_opts = { direction = "right" }`) instead of a flat `layoutopt = "direction:right"` string that `hl.workspace_rule` rejects. Multiple `layoutopt:` entries collect into one table and fan back out on the reverse path. https://github.com/BlueManCZ/hyprmod/issues/53
+
 ## [0.9.9] - 2026-06-21
 
 ### Added
@@ -337,6 +343,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.10]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.10
 [0.9.9]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.9
 [0.9.8]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.8
 [0.9.7]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.7

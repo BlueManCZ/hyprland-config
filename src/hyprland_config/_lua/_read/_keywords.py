@@ -11,7 +11,11 @@ from typing import Any
 
 from hyprland_config._core._model import Assignment, Document, Rule, SectionClose, SectionOpen
 from hyprland_config._lua._read._config import format_number, scalar_to_hyprlang
-from hyprland_config._lua._workspace_rules import lua_field_to_hyprlang
+from hyprland_config._lua._workspace_rules import (
+    LAYOUTOPT_LUA_NAME,
+    format_layout_opts,
+    lua_field_to_hyprlang,
+)
 
 
 def monitor_value(t: dict[str, Any]) -> str:
@@ -131,6 +135,9 @@ def workspace_value(t: dict[str, Any]) -> str:
     parts = [scalar_to_hyprlang(ws)]
     for key in sorted(t):
         if key == "workspace":
+            continue
+        if key == LAYOUTOPT_LUA_NAME and isinstance(t[key], dict):
+            parts.extend(format_layout_opts(t[key]))
             continue
         name, value = lua_field_to_hyprlang(key, t[key])
         parts.append(f"{name}:{value}")

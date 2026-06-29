@@ -19,7 +19,15 @@ Lua field        Hyprlang field    Notes
 ``decorate``    ``decorate``      bool
 ``default_name`` ``defaultName``  string
 ``on_created_empty`` ``on-created-empty`` string (command)
+``layout_opts`` ``layoutopt``     table ↔ repeated ``layoutopt:key:value``
 ==============  ================  ===================
+
+``layout_opts`` is the one field that isn't 1:1: the Hyprlang form repeats
+``layoutopt:key:value`` once per option (``layoutopt:direction:right``),
+while the Lua form gathers them into a single ``layout_opts = {direction =
+"right"}`` table. The per-field catalogue below can't express that fan-out,
+so :func:`parse_layoutopt` / :func:`format_layout_opts` carry it and the two
+callers special-case the field.
 
 Unknown fields pass through unchanged in both directions so plugin-added
 or future Hyprland-added properties survive a round-trip even if we
@@ -83,6 +91,11 @@ WORKSPACE_LUA_TO_HYPRLANG: dict[str, WorkspaceField] = {f.lua_name: f for f in W
 WORKSPACE_HYPRLANG_TO_LUA: dict[str, WorkspaceField] = {
     f.hyprlang_name: f for f in WORKSPACE_FIELDS
 }
+
+# ``layoutopt`` fans out N:1 (see module docstring), so it lives outside the
+# 1:1 catalogue and is handled by the two helpers below.
+LAYOUTOPT_HYPRLANG_NAME = "layoutopt"
+LAYOUTOPT_LUA_NAME = "layout_opts"
 
 
 def _is_truthy(value: Any) -> bool:
@@ -195,6 +208,25 @@ def hyprlang_field_to_lua(hyprlang_name: str, value: str) -> tuple[str, Any]:
         except (TypeError, ValueError):
             return field.lua_name, value
     return field.lua_name, value
+
+
+def parse_layoutopt(payload: str) -> tuple[str, Any] | None:
+    """Parse one Hyprlang ``layoutopt:`` payload (the ``key:value`` after the
+    leading ``layoutopt:``) into a ``(key, lua_value)`` pair for the
+    ``layout_opts`` table.
+
+    Returns ``None`` when the payload has no inner ``:`` separator, which
+    Hyprland itself rejects as a malformed rule.
+    """
+    key, sep, value = payload.partition(":")
+    if not sep:
+        return None
+    return key.strip(), _coerce_unknown(value.strip())
+
+
+def format_layout_opts(opts: dict[str, Any]) -> list[str]:
+    """Render a Lua ``layout_opts`` table as Hyprlang ``layoutopt:key:value`` tokens."""
+    return [f"{LAYOUTOPT_HYPRLANG_NAME}:{key}:{value_to_conf(opts[key])}" for key in sorted(opts)]
 
 
 def _coerce_unknown(text: str) -> Any:
