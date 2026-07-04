@@ -146,6 +146,19 @@ hl.unbind = function(keys) record("unbind", keys) end
 hl.plugin = {
     load = function(path) record("plugin_load", path) end,
 }
+local _dummy_plugin_table = {}
+setmetatable(_dummy_plugin_table, {
+    __index = function(self, key) return _dummy_plugin_table end,
+    __newindex = function(self, key, value) end,
+    __call = function(...) return _dummy_plugin_table end,
+})
+
+setmetatable(hl.plugin, {
+    __index = function(self, key)
+        if key == "load" then return rawget(self, key) end
+        return _dummy_plugin_table
+    end
+})
 
 -- Submap declaration runs its body inline so the body's hl.bind calls
 -- land in the main record list. The Document model has no submap nesting,
@@ -304,7 +317,12 @@ function require(modname)
             end
         end
     end
-    return _real_require(modname)
+    local ok, result = pcall(_real_require, modname)
+    if not ok then
+        record("__error", "require failed: " .. tostring(result))
+        return nil
+    end
+    return result
 end
 
 -- ----------------------------------------------------------------------

@@ -598,6 +598,21 @@ class TestErrors:
         with pytest.raises(LuaReaderError, match="lua failed to load"):
             load_lua(tmp_path / "does_not_exist.lua")
 
+    def test_missing_require_ignored(self, tmp_path: Path) -> None:
+        src = 'require("missing_module")\nhl.config({ general = { gaps_in = 5 } })\n'
+        doc = load_lua(_write_lua(tmp_path, src))
+        assert _assignments(doc) == {"general:gaps_in": "5"}
+
+    def test_plugin_namespace_ignored(self, tmp_path: Path) -> None:
+        src = (
+            "if hl.plugin.some_plugin then\n"
+            "    hl.plugin.some_plugin.some_setting = 1\n"
+            "end\n"
+            "hl.config({ general = { gaps_in = 5 } })\n"
+        )
+        doc = load_lua(_write_lua(tmp_path, src))
+        assert _assignments(doc) == {"general:gaps_in": "5"}
+
     def test_syntax_error_surfaces(self, tmp_path: Path) -> None:
         path = _write_lua(tmp_path, "this is not valid lua {{{\n")
         with pytest.raises(LuaReaderError):
