@@ -16,10 +16,12 @@ from hyprland_config._migrate._deprecations import (
     check_deprecated,
 )
 from hyprland_config._migrate._runner import MigrationResult, migrate
+from hyprland_config._migrate._windowrule import normalize_rules
 
 __all__ = [
     "ConfigDeprecation",
     "MigrationResult",
     "check_deprecated",
     "migrate",
+    "normalize_rules",
 ]

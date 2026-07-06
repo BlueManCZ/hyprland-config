@@ -68,6 +68,7 @@ from hyprland_config._migrate import (
     MigrationResult,
     check_deprecated,
     migrate,
+    normalize_rules,
 )
 
 
@@ -234,6 +235,7 @@ __all__ = [
     "load_lua",
     "migrate",
     "normalize_gradient_string",
+    "normalize_rules",
     "parse_bind_line",
     "parse_hyprlang_bool",
     "parse_string",

@@ -730,6 +730,26 @@ class TestNormalizeRules:
         assert len(rules) == 1
         assert rules[0].name == "future-proof"
 
+    def test_public_export_normalizes_without_migrating(self):
+        # ``normalize_rules`` is importable from the package root and is
+        # the consent-free subset of ``migrate()``: it collapses rule
+        # lines into Rule nodes but never rewrites deprecated keys.
+        from hyprland_config import normalize_rules
+
+        doc = parse_string("exec_once = waybar\nwindowrule = match:class kitty, float on\n")
+        assert normalize_rules(doc) is True
+        rules = _rules_of_kind(doc, "windowrule")
+        assert len(rules) == 1
+        assert rules[0].effects == [("float", "on")]
+        # The deprecated key is left for migrate() to handle.
+        assert "exec_once = waybar" in serialize_hyprlang(doc)
+
+    def test_public_export_reports_noop(self):
+        from hyprland_config import normalize_rules
+
+        doc = parse_string("general {\n    gaps_in = 5\n}\n")
+        assert normalize_rules(doc) is False
+
     def test_normalize_recurses_into_sourced_documents(self, tmp_path):
         sourced = tmp_path / "rules.conf"
         sourced.write_text(

@@ -5,6 +5,12 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.12] - 2026-07-06
+
+### Added
+
+- `normalize_rules` is now exported from the package root. It collapses `windowrule` / `layerrule` lines into structured `Rule` nodes without rewriting deprecated keys — the consent-free subset of `migrate()` for callers that normalize on every write. https://github.com/BlueManCZ/hyprmod/pull/60
+
 ## [0.9.11] - 2026-07-05
 
 ### Fixed

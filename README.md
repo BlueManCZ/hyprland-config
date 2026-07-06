@@ -300,6 +300,14 @@ print(f"Applied {len(result.applied)} migrations")
 config.save()
 ```
 
+`migrate()` also rewrites deprecated keys. When you only want the structural part — collapsing `windowrule` / `layerrule` lines into structured `Rule` nodes without touching anything deprecated — call `normalize_rules(doc)` directly. It operates on a single document (no source recursion) and returns `True` if any line was rewritten:
+
+```python
+from hyprland_config import normalize_rules
+
+changed = normalize_rules(config)
+```
+
 ## Features
 
 - Nested `category { }` blocks, including `device[name] { }`
