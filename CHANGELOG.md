@@ -5,6 +5,21 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.13] - 2026-07-27
+
+### Added
+
+- Lua emitters for ten dispatchers that had none: `movewindoworgroup`, `movegroupwindow`, `execr`, `focusworkspaceoncurrentmonitor`, `focusurgentorlast`, `pass`, `swapactiveworkspaces`, `lockgroups`, `lockactivegroup` and `denywindowfromgroup`. In Lua mode a bind using any of them failed with "No Lua mapping for keyword", naming the bind keyword rather than the dispatcher that could not be translated. The reverse reader maps all ten back to their Hyprlang spelling. https://github.com/BlueManCZ/hyprmod/issues/70
+- `lockgroups`, `lockactivegroup` and `denywindowfromgroup` translate their enable/disable words explicitly in both directions. Hyprlang reads an unrecognised value as disable while Lua's `parseToggleStr` falls back to toggle, and the accepted spellings differ per dispatcher (an empty arg enables `lockgroups` but disables `lockactivegroup`).
+
+### Changed
+
+- A bind that cannot be translated now names the dispatcher and its argument instead of the bind keyword: `No Lua mapping for dispatcher 'resizeactive' with arg 'l' in binde = '…'` rather than `No Lua mapping for keyword 'binde' = '…'`. The keyword was almost never the cause. Lines that aren't binds, and bind lines too malformed to parse, still report the keyword.
+
+### Fixed
+
+- `group_aware` and `on_current_monitor` are no longer dropped when reading Lua. Both hang off a call the reader already recognised, so a hand-written `hl.dsp.window.move({ direction, group_aware })` silently downgraded to `movewindow` and `hl.dsp.focus({ workspace, on_current_monitor })` to `workspace`.
+
 ## [0.9.12] - 2026-07-06
 
 ### Added
@@ -357,6 +372,8 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.13]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.13
+[0.9.12]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.12
 [0.9.11]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.11
 [0.9.10]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.10
 [0.9.9]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.9

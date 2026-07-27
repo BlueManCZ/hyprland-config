@@ -9,7 +9,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from hyprland_config._hyprlang._bind import is_bind_keyword
+from hyprland_config._hyprlang._bind import is_bind_keyword, parse_bind_line
 from hyprland_config._hyprlang._parser import is_keyword
 from hyprland_config._lua._emit._bind import emit_bind, emit_unbind
 from hyprland_config._lua._emit._dispatchers import (
@@ -108,6 +108,24 @@ def emit_option_assignment(full_key: str, value: str) -> str:
     return f"hl.config({format_table(tree, indent=0)})"
 
 
+def _unmappable_detail(key: str, value: str) -> str:
+    """Name the part of an untranslatable ``key = value`` line that caused it.
+
+    For a bind, the keyword is almost never the problem: ``binde`` translates
+    fine and it is the dispatcher (unknown, or handed an arg shape it doesn't
+    accept) that has no Lua form. Blaming the keyword sends readers looking
+    for missing ``binde`` support that isn't missing.
+    """
+    if is_bind_keyword(key):
+        bind = parse_bind_line(f"{key} = {value}")
+        if bind is not None:
+            target = f"dispatcher {bind.dispatcher!r}"
+            if bind.arg:
+                target += f" with arg {bind.arg!r}"
+            return f"{target} in {key} = {value!r}"
+    return f"keyword {key!r} = {value!r}"
+
+
 def keyword_to_lua(key: str, value: Any) -> str:
     """Translate a single ``key = value`` line to its Lua ``hl.*`` form.
 
@@ -123,7 +141,7 @@ def keyword_to_lua(key: str, value: Any) -> str:
     if is_keyword(key):
         snippet = emit_keyword_line(key, value_str)
         if snippet is None:
-            raise ValueError(f"No Lua mapping for keyword {key!r} = {value_str!r}")
+            raise ValueError(f"No Lua mapping for {_unmappable_detail(key, value_str)}")
         return snippet
     return emit_option_assignment(key, value_str)
 
@@ -150,7 +168,7 @@ def define_submap_to_lua(name: str, binds: list[tuple[str, str]]) -> str:
     for kw, value in binds:
         snippet = emit_keyword_line(kw, value)
         if snippet is None:
-            raise ValueError(f"No Lua mapping for {kw!r} = {value!r} in submap {name!r}")
+            raise ValueError(f"No Lua mapping in submap {name!r}: {_unmappable_detail(kw, value)}")
         body_lines.append(snippet)
     indented = "\n".join(f"{INDENT}{line}" for line in body_lines)
     return f"hl.define_submap({quote_string(name)}, function()\n{indented}\nend)"

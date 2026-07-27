@@ -8,7 +8,12 @@ and the runtime APIs ``dispatch_to_lua`` and ``define_submap_to_lua``.
 import pytest
 
 from hyprland_config import parse_string, serialize_lua
-from hyprland_config._lua import define_submap_to_lua, dispatch_to_lua, emit_keyword_line
+from hyprland_config._lua import (
+    define_submap_to_lua,
+    dispatch_to_lua,
+    emit_keyword_line,
+    keyword_to_lua,
+)
 from tests._lua_helpers import assert_lua_compiles, requires_lua
 
 
@@ -252,6 +257,133 @@ class TestExtraDispatchers:
     def test_changegroupactive_no_arg_cycles_next(self) -> None:
         out = serialize_lua(parse_string("bind = SUPER, tab, changegroupactive,\n"))
         assert "hl.dsp.group.next()" in out
+
+
+class TestUnmappableErrorMessage:
+    """A failed bind translation has to name the dispatcher, not the keyword.
+
+    The keyword is almost never at fault: reporting ``binde`` sent one bug
+    reporter looking for missing ``binde`` support that was never missing.
+    """
+
+    def test_names_the_dispatcher_and_arg(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            keyword_to_lua("binde", "SUPER SHIFT, Left, resizeactive, l")
+        message = str(excinfo.value)
+        assert "dispatcher 'resizeactive' with arg 'l'" in message
+        # The offending line still shows, so the bind is identifiable.
+        assert "binde = 'SUPER SHIFT, Left, resizeactive, l'" in message
+
+    def test_omits_the_arg_when_there_is_none(self) -> None:
+        with pytest.raises(ValueError, match="dispatcher 'notadispatcher' in bind ="):
+            keyword_to_lua("bind", "SUPER, X, notadispatcher")
+
+    def test_unparseable_bind_line_falls_back_to_the_keyword(self) -> None:
+        with pytest.raises(ValueError, match="keyword 'bind' = 'garbage'"):
+            keyword_to_lua("bind", "garbage")
+
+    def test_non_bind_keyword_is_still_named(self) -> None:
+        with pytest.raises(ValueError, match="keyword 'submap' = 'reset'"):
+            keyword_to_lua("submap", "reset")
+
+    def test_submap_body_error_names_both(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            define_submap_to_lua("nav", [("binde", "SUPER, Left, resizeactive, l")])
+        message = str(excinfo.value)
+        assert "submap 'nav'" in message
+        assert "dispatcher 'resizeactive' with arg 'l'" in message
+
+
+class TestGroupAndPassDispatchers:
+    """Dispatchers whose Lua form is not a straight rename of the Hyprlang one."""
+
+    def test_movewindoworgroup(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, h, movewindoworgroup, l\n"))
+        assert 'hl.dsp.window.move({ direction = "left", group_aware = true })' in out
+
+    def test_movewindoworgroup_rejects_non_direction(self) -> None:
+        assert emit_keyword_line("bind", "SUPER, h, movewindoworgroup, sideways") is None
+
+    def test_movegroupwindow_backward(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, b, movegroupwindow, b\n"))
+        assert "hl.dsp.group.move_window({ forward = false })" in out
+
+    def test_movegroupwindow_defaults_to_forward(self) -> None:
+        # Hyprlang reads anything but b/prev as forward, the Lua default.
+        for arg in ("f", "", "anything"):
+            out = serialize_lua(parse_string(f"bind = SUPER, f, movegroupwindow, {arg}\n"))
+            assert "hl.dsp.group.move_window()" in out
+
+    def test_execr(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, e, execr, kitty --class term\n"))
+        assert 'hl.dsp.exec_raw("kitty --class term")' in out
+
+    def test_focusworkspaceoncurrentmonitor(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, 1, focusworkspaceoncurrentmonitor, 1\n"))
+        assert "hl.dsp.focus({ workspace = 1, on_current_monitor = true })" in out
+
+    def test_focusurgentorlast(self) -> None:
+        out = serialize_lua(parse_string("bind = ALT, grave, focusurgentorlast\n"))
+        assert "hl.dsp.focus({ urgent_or_last = true })" in out
+
+    def test_pass(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, p, pass, class:^(discord)$\n"))
+        assert 'hl.dsp.pass({ window = "class:^(discord)$" })' in out
+
+    def test_pass_needs_a_window(self) -> None:
+        assert emit_keyword_line("bind", "SUPER, p, pass") is None
+
+    def test_swapactiveworkspaces(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, s, swapactiveworkspaces, DP-1 DP-2\n"))
+        assert 'hl.dsp.workspace.swap_monitors({ monitor1 = "DP-1", monitor2 = "DP-2" })' in out
+
+    def test_swapactiveworkspaces_needs_two_monitors(self) -> None:
+        assert emit_keyword_line("bind", "SUPER, s, swapactiveworkspaces, DP-1") is None
+
+    @pytest.mark.parametrize(
+        ("arg", "action"),
+        # Empty enables lockgroups but disables lockactivegroup, and an
+        # unrecognised value disables both. Hyprland's own two parsers.
+        [("lock", "on"), ("", "on"), ("unlock", "off"), ("toggle", "toggle")],
+    )
+    def test_lockgroups(self, arg: str, action: str) -> None:
+        out = serialize_lua(parse_string(f"bind = SUPER, g, lockgroups, {arg}\n"))
+        assert f'hl.dsp.group.lock({{ action = "{action}" }})' in out
+
+    @pytest.mark.parametrize(
+        ("arg", "action"),
+        [("lock", "on"), ("", "off"), ("unlock", "off"), ("toggle", "toggle")],
+    )
+    def test_lockactivegroup(self, arg: str, action: str) -> None:
+        out = serialize_lua(parse_string(f"bind = SUPER, g, lockactivegroup, {arg}\n"))
+        assert f'hl.dsp.group.lock_active({{ action = "{action}" }})' in out
+
+    @pytest.mark.parametrize(
+        ("arg", "action"),
+        [("on", "on"), ("off", "off"), ("", "off"), ("toggle", "toggle")],
+    )
+    def test_denywindowfromgroup(self, arg: str, action: str) -> None:
+        out = serialize_lua(parse_string(f"bind = SUPER, d, denywindowfromgroup, {arg}\n"))
+        assert f'hl.dsp.window.deny_from_group({{ action = "{action}" }})' in out
+
+    @requires_lua
+    def test_emitted_calls_compile(self) -> None:
+        assert_lua_compiles(
+            serialize_lua(
+                parse_string(
+                    "bind = SUPER, h, movewindoworgroup, l\n"
+                    "bind = SUPER, b, movegroupwindow, b\n"
+                    "bind = SUPER, e, execr, kitty\n"
+                    "bind = SUPER, 1, focusworkspaceoncurrentmonitor, 1\n"
+                    "bind = ALT, grave, focusurgentorlast\n"
+                    "bind = SUPER, p, pass, class:^(discord)$\n"
+                    "bind = SUPER, s, swapactiveworkspaces, DP-1 DP-2\n"
+                    "bind = SUPER, g, lockgroups, lock\n"
+                    "bind = SUPER, k, lockactivegroup, toggle\n"
+                    "bind = SUPER, d, denywindowfromgroup, on\n"
+                )
+            )
+        )
 
 
 class TestBindd:

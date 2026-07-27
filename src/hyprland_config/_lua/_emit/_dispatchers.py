@@ -42,6 +42,11 @@ def _dispatch_workspace(arg: str) -> str:
     return f"hl.dsp.focus({{ workspace = {format_value(coerce_value(arg), 0)} }})"
 
 
+def _dispatch_focusworkspaceoncurrentmonitor(arg: str) -> str:
+    value = format_value(coerce_value(arg), 0)
+    return f"hl.dsp.focus({{ workspace = {value}, on_current_monitor = true }})"
+
+
 def _dispatch_movetoworkspace(arg: str, *, silent: bool = False) -> str:
     """``movetoworkspace[silent], N[,address:0x…]`` → ``hl.dsp.window.move({…})``.
 
@@ -108,6 +113,14 @@ def _dispatch_movewindow(arg: str, *, mouse: bool = False) -> str | None:
             parts.append(f"window = {quote_string(selector)}")
         return f"hl.dsp.window.move({{ {', '.join(parts)} }})"
     return None
+
+
+def _dispatch_movewindoworgroup(arg: str) -> str | None:
+    """``movewindoworgroup, dir`` → ``hl.dsp.window.move({ group_aware = true })``."""
+    direction = _parse_direction(arg)
+    if direction is None:
+        return None
+    return f'hl.dsp.window.move({{ direction = "{direction}", group_aware = true }})'
 
 
 def _dispatch_window_float(action: str, arg: str) -> str:
@@ -246,6 +259,24 @@ def _dispatch_moveworkspacetomonitor(arg: str) -> str | None:
     )
 
 
+def _dispatch_swapactiveworkspaces(arg: str) -> str | None:
+    parts = arg.strip().split(None, 1)
+    if len(parts) != 2:
+        return None
+    first, second = parts
+    return (
+        f"hl.dsp.workspace.swap_monitors({{ monitor1 = {quote_string(first)}, "
+        f"monitor2 = {quote_string(second)} }})"
+    )
+
+
+def _dispatch_pass(arg: str) -> str | None:
+    window = arg.strip()
+    if not window:
+        return None
+    return f"hl.dsp.pass({{ window = {quote_string(window)} }})"
+
+
 def _dispatch_setprop(arg: str) -> str | None:
     """``setprop, [WINDOW] PROP VALUE`` → ``hl.dsp.window.set_prop({...})``.
 
@@ -327,6 +358,31 @@ def _dispatch_resizeactive(arg: str) -> str | None:
     )
 
 
+def _dispatch_toggle(call: str, arg: str, enable: tuple[str, ...]) -> str:
+    """Shared body for the lock/deny dispatchers → ``{ action = … }``.
+
+    The two sides disagree on the fallback: Hyprlang's parsers recognise
+    ``toggle`` plus one enable spelling and treat *everything* else as
+    disable, while Lua's ``parseToggleStr`` falls back to toggle. Spelling
+    the mapping out keeps a stray value meaning what Hyprland meant by it.
+    The accepted enable spellings differ per dispatcher, hence *enable*.
+    """
+    value = arg.strip()
+    action = "toggle" if value == "toggle" else "on" if value in enable else "off"
+    return f'{call}({{ action = "{action}" }})'
+
+
+def _dispatch_movegroupwindow(arg: str) -> str:
+    """``movegroupwindow, [b|prev]`` → ``hl.dsp.group.move_window(…)``.
+
+    Hyprlang reads anything other than ``b``/``prev`` as forward, which is
+    already the Lua default, so only the backward case carries an argument.
+    """
+    if arg.strip() in ("b", "prev"):
+        return "hl.dsp.group.move_window({ forward = false })"
+    return "hl.dsp.group.move_window()"
+
+
 def _dispatch_moveintogroup(arg: str) -> str | None:
     """``moveintogroup, dir`` → ``hl.dsp.window.move({ into_group = "dir" })``."""
     direction = _parse_direction(arg)
@@ -356,6 +412,7 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     "forcerendererreload": lambda *_: "hl.dsp.force_renderer_reload()",
     "moveoutofgroup": lambda *_: "hl.dsp.window.move({ out_of_group = true })",
     "focuscurrentorlast": lambda *_: "hl.dsp.focus({ last = true })",
+    "focusurgentorlast": lambda *_: "hl.dsp.focus({ urgent_or_last = true })",
     "bringactivetotop": lambda *_: "hl.dsp.window.bring_to_top()",
     "noop": lambda *_: "hl.dsp.no_op()",
     "swapnext": lambda *_: "hl.dsp.window.swap({ next = true })",
@@ -375,6 +432,9 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     # (hyprland-global-shortcuts-v1 protocol). ``global`` isn't a Lua keyword,
     # so ``hl.dsp.global(...)`` is valid.
     "global": lambda arg, _: f"hl.dsp.global({quote_string(arg.strip())})",
+    # ``execr`` runs the command without a shell, so unlike ``exec`` there is
+    # no embedded ``hyprctl`` line to rewrite: the arg passes through as-is.
+    "execr": lambda arg, _: f"hl.dsp.exec_raw({quote_string(arg)})",
     # Parameterized
     "workspace": lambda arg, _: _dispatch_workspace(arg),
     "movetoworkspace": lambda arg, _: _dispatch_movetoworkspace(arg),
@@ -394,6 +454,21 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     "tagwindow": lambda arg, _: _dispatch_tagwindow(arg),
     "alterzorder": lambda arg, _: _dispatch_alterzorder(arg),
     "resizeactive": lambda arg, _: _dispatch_resizeactive(arg),
+    "movewindoworgroup": lambda arg, _: _dispatch_movewindoworgroup(arg),
+    "movegroupwindow": lambda arg, _: _dispatch_movegroupwindow(arg),
+    "focusworkspaceoncurrentmonitor": lambda arg, _: _dispatch_focusworkspaceoncurrentmonitor(arg),
+    "swapactiveworkspaces": lambda arg, _: _dispatch_swapactiveworkspaces(arg),
+    "pass": lambda arg, _: _dispatch_pass(arg),
+    # Toggle-style args, each with its own accepted enable spelling. An empty
+    # arg enables ``lockgroups`` but disables ``lockactivegroup``, matching
+    # Hyprland's own two parsers.
+    "lockgroups": lambda arg, _: _dispatch_toggle(
+        "hl.dsp.group.lock", arg, ("", "lock", "lockgroups")
+    ),
+    "lockactivegroup": lambda arg, _: _dispatch_toggle("hl.dsp.group.lock_active", arg, ("lock",)),
+    "denywindowfromgroup": lambda arg, _: _dispatch_toggle(
+        "hl.dsp.window.deny_from_group", arg, ("on",)
+    ),
 }
 
 

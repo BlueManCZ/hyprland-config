@@ -631,6 +631,77 @@ class TestErrors:
             load_lua(path)
 
 
+class TestGroupAndPassDispatcherReads:
+    """The Lua forms whose Hyprlang name is not a straight rename.
+
+    ``group_aware`` and ``on_current_monitor`` are the ones that matter:
+    both hang off a call the reader already recognised, so ignoring them
+    silently downgraded the bind to ``movewindow`` / ``workspace``.
+    """
+
+    def test_movewindoworgroup(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.bind('SUPER + h', hl.dsp.window.move({ direction = 'left', group_aware = true }))",
+        )
+        assert _keywords(load_lua(path), "bind") == ["SUPER, h, movewindoworgroup, l"]
+
+    def test_focusworkspaceoncurrentmonitor(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.bind('SUPER + 1', hl.dsp.focus({ workspace = 1, on_current_monitor = true }))",
+        )
+        assert _keywords(load_lua(path), "bind") == ["SUPER, 1, focusworkspaceoncurrentmonitor, 1"]
+
+    def test_movegroupwindow_backward(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path, "hl.bind('SUPER + b', hl.dsp.group.move_window({ forward = false }))"
+        )
+        assert _keywords(load_lua(path), "bind") == ["SUPER, b, movegroupwindow, b"]
+
+    def test_movegroupwindow_no_args_is_forward(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.bind('SUPER + n', hl.dsp.group.move_window())")
+        assert _keywords(load_lua(path), "bind") == ["SUPER, n, movegroupwindow, f"]
+
+    def test_execr(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.bind('SUPER + e', hl.dsp.exec_raw('kitty'))")
+        assert _keywords(load_lua(path), "bind") == ["SUPER, e, execr, kitty"]
+
+    def test_pass(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path, "hl.bind('SUPER + p', hl.dsp.pass({ window = 'class:^(discord)$' }))"
+        )
+        assert _keywords(load_lua(path), "bind") == ["SUPER, p, pass, class:^(discord)$"]
+
+    def test_swapactiveworkspaces(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.bind('SUPER + s', hl.dsp.workspace.swap_monitors("
+            "{ monitor1 = 'DP-1', monitor2 = 'DP-2' }))",
+        )
+        assert _keywords(load_lua(path), "bind") == ["SUPER, s, swapactiveworkspaces, DP-1 DP-2"]
+
+    @pytest.mark.parametrize(
+        ("call", "action", "expected"),
+        [
+            ("group.lock", "on", "lockgroups, lock"),
+            ("group.lock", "off", "lockgroups, unlock"),
+            ("group.lock", "toggle", "lockgroups, toggle"),
+            ("group.lock_active", "on", "lockactivegroup, lock"),
+            ("group.lock_active", "off", "lockactivegroup, unlock"),
+            ("window.deny_from_group", "on", "denywindowfromgroup, on"),
+            ("window.deny_from_group", "off", "denywindowfromgroup, off"),
+        ],
+    )
+    def test_toggle_dispatchers(
+        self, tmp_path: Path, call: str, action: str, expected: str
+    ) -> None:
+        path = _write_lua(
+            tmp_path, f"hl.bind('SUPER + g', hl.dsp.{call}({{ action = '{action}' }}))"
+        )
+        assert _keywords(load_lua(path), "bind") == [f"SUPER, g, {expected}"]
+
+
 class TestRoundTripWithEmitter:
     """``parse_string`` → ``serialize_lua`` → ``load_lua`` keeps the
     same option set."""
@@ -668,6 +739,23 @@ class TestRoundTripWithEmitter:
         assert _keywords(doc, "bezier") == ["easeOut, 0.05, 0.9, 0.1, 1.05"]
         # Round-trip normalises the legacy ``1`` to the canonical ``true``.
         assert _keywords(doc, "animation") == ["windows, true, 7, easeOut, slide"]
+
+    def test_round_trip_group_and_pass_dispatchers(self, tmp_path: Path) -> None:
+        src = (
+            "bind = SUPER, h, movewindoworgroup, l\n"
+            "bind = SUPER, b, movegroupwindow, b\n"
+            "bind = SUPER, e, execr, kitty\n"
+            "bind = SUPER, 1, focusworkspaceoncurrentmonitor, 1\n"
+            "bind = ALT, grave, focusurgentorlast\n"
+            "bind = SUPER, p, pass, class:^(discord)$\n"
+            "bind = SUPER, s, swapactiveworkspaces, DP-1 DP-2\n"
+            "bind = SUPER, g, lockgroups, unlock\n"
+            "bind = SUPER, k, lockactivegroup, toggle\n"
+            "bind = SUPER, d, denywindowfromgroup, on\n"
+        )
+        assert _keywords(self._via_lua(src, tmp_path), "bind") == [
+            ln.split(" = ", 1)[1] for ln in src.splitlines()
+        ]
 
     def test_round_trip_exec_and_exec_shutdown(self, tmp_path: Path) -> None:
         # The three exec keywords carry distinct semantics that survive the

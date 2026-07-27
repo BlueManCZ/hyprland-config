@@ -90,11 +90,48 @@ def dispatcher_to_hyprlang(dispatcher: Any) -> tuple[str, str]:
         return ("tagwindow", "")
     if name == "window.fullscreen_state":
         return _fullscreen_state(args[0] if args else None)
+    if name == "exec_raw":
+        return ("execr", str(args[0]) if args else "")
+    if name == "pass":
+        if args and isinstance(args[0], dict):
+            return ("pass", str(args[0].get("window", "")))
+        return ("pass", "")
+    if name == "workspace.swap_monitors":
+        return _swap_monitors(args[0] if args else None)
+    if name == "group.move_window":
+        forward = args[0].get("forward", True) if args and isinstance(args[0], dict) else True
+        return ("movegroupwindow", "f" if forward else "b")
+    if name == "group.lock":
+        return ("lockgroups", _toggle_to_hyprlang(args, "lock", "unlock"))
+    if name == "group.lock_active":
+        return ("lockactivegroup", _toggle_to_hyprlang(args, "lock", "unlock"))
+    if name == "window.deny_from_group":
+        return ("denywindowfromgroup", _toggle_to_hyprlang(args, "on", "off"))
 
     # Fall through: keep the Lua-side dotted name so downstream tooling
     # can still display *something* useful and a future revision can
     # extend the table.
     return (name, ", ".join(scalar_to_hyprlang(a) for a in args))
+
+
+def _toggle_to_hyprlang(args: Any, on: str, off: str) -> str:
+    """Spell a Lua ``{ action = … }`` back in the dispatcher's own vocabulary.
+
+    The lock dispatchers say ``lock``/``unlock`` where ``denywindowfromgroup``
+    says ``on``/``off``, so the enable/disable words come from the caller.
+    """
+    action = args[0].get("action") if args and isinstance(args[0], dict) else None
+    if action == "on":
+        return on
+    if action == "off":
+        return off
+    return "toggle"
+
+
+def _swap_monitors(arg: Any) -> tuple[str, str]:
+    if not isinstance(arg, dict):
+        return ("swapactiveworkspaces", "")
+    return ("swapactiveworkspaces", f"{arg.get('monitor1', '')} {arg.get('monitor2', '')}".strip())
 
 
 def _fullscreen_state(arg: Any) -> tuple[str, str]:
@@ -120,7 +157,10 @@ def _focus(arg: Any) -> tuple[str, str]:
     if "direction" in arg:
         return ("movefocus", _DIRECTION_TO_HYPRLANG.get(arg["direction"], str(arg["direction"])))
     if "workspace" in arg:
-        return ("workspace", scalar_to_hyprlang(arg["workspace"]))
+        ws = scalar_to_hyprlang(arg["workspace"])
+        if arg.get("on_current_monitor"):
+            return ("focusworkspaceoncurrentmonitor", ws)
+        return ("workspace", ws)
     if "monitor" in arg:
         return ("focusmonitor", str(arg["monitor"]))
     if "window" in arg:
@@ -136,7 +176,10 @@ def _window_move(arg: Any) -> tuple[str, str]:
     if not isinstance(arg, dict):
         return ("movewindow", "")
     if "direction" in arg:
-        return ("movewindow", _DIRECTION_TO_HYPRLANG.get(arg["direction"], str(arg["direction"])))
+        direction = _DIRECTION_TO_HYPRLANG.get(arg["direction"], str(arg["direction"]))
+        if arg.get("group_aware"):
+            return ("movewindoworgroup", direction)
+        return ("movewindow", direction)
     if "workspace" in arg:
         ws = scalar_to_hyprlang(arg["workspace"])
         if arg.get("silent"):
