@@ -1,6 +1,7 @@
 """Tests for atomic file writing."""
 
-from hyprland_config import atomic_write, load
+from hyprland_config import atomic_write, load, load_any
+from tests._lua_helpers import requires_lua_interpreter
 
 
 class TestAtomicWrite:
@@ -74,3 +75,50 @@ class TestDocumentSave:
         doc.save()
 
         assert conf.read_text() == "general {\n    gaps_in = 20\n}\n"
+
+
+@requires_lua_interpreter
+class TestSaveFormat:
+    """A document saves in the format it was loaded from.
+
+    Writing Hyprlang lines back into a ``.lua`` entrypoint leaves the user
+    with a config Hyprland refuses to parse.
+    """
+
+    def test_lua_document_saves_as_lua(self, tmp_path):
+        entry = tmp_path / "hyprland.lua"
+        entry.write_text("hl.config({ general = { border_size = 3 } })\n")
+
+        doc = load_any(entry)
+        doc.set("general:border_size", 10)
+        doc.save()
+
+        assert entry.read_text() == (
+            "hl.config({\n    general = {\n        border_size = 10,\n    },\n})\n"
+        )
+
+    def test_conf_target_converts_to_hyprlang(self, tmp_path):
+        entry = tmp_path / "hyprland.lua"
+        entry.write_text("hl.config({ general = { border_size = 3 } })\n")
+
+        doc = load_any(entry)
+        doc.set("general:border_size", 10)
+        doc.save(tmp_path / "converted.conf")
+
+        assert (tmp_path / "converted.conf").read_text() == "general:border_size = 10\n"
+
+    def test_sourced_lua_files_stay_split(self, tmp_path):
+        (tmp_path / "general.lua").write_text("hl.config({ general = { gaps_in = 5 } })\n")
+        entry = tmp_path / "hyprland.lua"
+        entry.write_text('require("general")\nhl.config({ decoration = { rounding = 4 } })\n')
+
+        doc = load_any(entry)
+        # A key no other file defines lands in the entrypoint, so the file
+        # holding the require gets rewritten.
+        doc.set("misc:vfr", True)
+        doc.save()
+
+        text = entry.read_text()
+        assert 'require("general")' in text
+        assert "gaps_in" not in text
+        assert "vfr = true" in text

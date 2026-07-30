@@ -62,11 +62,14 @@ def _add_leaf(doc: Document, full_key: str, value: Any, *, source: str = "") -> 
 
 
 def _add_assignment(doc: Document, full_key: str, value: str, *, source: str = "") -> None:
-    leaf = full_key.rsplit(":", 1)[-1]
+    # ``key`` carries the whole colon path, not the leaf: these lines sit at
+    # top level with no enclosing section, which is the flat Hyprlang shape
+    # (``key == full_key``). A leaf-only key would re-render as a bare
+    # ``border_size = 2`` the moment anything calls ``update_raw``.
     doc.lines.append(
         Assignment(
             raw=f"{full_key} = {value}\n",
-            key=leaf,
+            key=full_key,
             value=value,
             full_key=full_key,
             source_name=source,

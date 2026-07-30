@@ -236,9 +236,12 @@ config = load_lua("~/.config/hypr/hyprland.lua")
 config.get("general:gaps_in")        # "5"
 config.get_all("bind")               # ["SUPER, Q, killactive,", ...]
 config.set("decoration:rounding", 8) # works the same as on Hyprlang configs
+config.save()                        # writes Lua back, not Hyprlang
 ```
 
 Under the hood `load_lua()` shells out to a `lua` interpreter to run the user's config under a sandboxed `hl.*` shim and captures the effects. Comments, blank lines, and the user's own local variables are not preserved — only the `hl.*` calls the config produces. If `lua` is missing from `PATH`, `LuaReaderError` (a subclass of `ParseError`) is raised with a clear message.
+
+Because of that, `save()` rewrites each modified file rather than patching lines in place, and only the files that changed are touched (`Document.lua` records which format the document came from). Sub-files stay split: each `require()` position is re-emitted as a `require()` call instead of being inlined into the parent. A rewritten file leads with its own `hl.config({...})` block, so an option the parent sets *after* a `require()` that sets the same key will lose to the required file on the next load.
 
 ### Format-agnostic load and serialize
 
@@ -249,11 +252,16 @@ from hyprland_config import default_entrypoint, load_any, serialize_any
 
 path = default_entrypoint()  # hyprland.lua if it exists, else hyprland.conf
 doc = load_any(path)
-# ...edit doc...
-path.write_text(serialize_any(doc, path))
+doc.set("general:gaps_in", 20)
+doc.save()                   # each dirty file in the format it was read as
+
+# Or render to text without touching disk (diffs, previews, other targets)
+preview = serialize_any(doc, path)
 ```
 
 `default_entrypoint()` mirrors Hyprland's own resolution: it returns `hyprland.lua` when present (Hyprland 0.55+), falling back to `hyprland.conf`. The companion `default_config_dir()`, `default_hyprlang_entrypoint()`, and `default_lua_entrypoint()` return their parts individually.
+
+`save(path)` converts when the target names the other format: a Lua document saved to a `.conf` path comes out as Hyprlang, and a Hyprlang one saved to `.lua` comes out as Lua. Any other suffix keeps the document's own format.
 
 ### Convert a Hyprlang config to Lua
 
@@ -321,7 +329,7 @@ changed = normalize_rules(config)
 - Special keywords: bind (all flag variants), monitor, animation, bezier, env, exec, workspace, windowrule, and more
 - Comment-preserving round-trip editing
 - Lua format support (Hyprland 0.55+): read existing `hyprland.lua` configs back into `Document` via `load_lua()`, emit Lua via `serialize_lua()` / `serialize_lua_tree()`, and migrate Hyprlang trees onto Lua atomically via `analyze_conversion()` / `execute_conversion()`
-- Format-agnostic `load_any()` / `serialize_any()` helpers that dispatch on file suffix
+- Format-agnostic `load_any()` / `serialize_any()` helpers that dispatch on file suffix, and a `save()` that writes each file back in the format it was read as
 - Lenient parsing mode for malformed or partial configs
 - Deprecation checking and automatic migration (v0.33–v0.55+)
 - Section listing and iteration

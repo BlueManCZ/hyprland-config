@@ -18,6 +18,7 @@ from hyprland_config import (
     LuaReaderError,
     load_lua,
     parse_string,
+    serialize_hyprlang,
     serialize_lua,
 )
 from hyprland_config._lua import serialize_lua_tree
@@ -120,6 +121,35 @@ class TestConfigOptions:
         # accepts both for cssgap/int but our existing parsed form is int.
         path = _write_lua(tmp_path, "hl.config({ decoration = { active_opacity = 1.0 } })\n")
         assert _assignments(load_lua(path))["decoration:active_opacity"] == "1"
+
+
+class TestEditedAssignments:
+    """Lua-read assignments are flat top-level lines, so ``key == full_key``.
+
+    ``update_raw`` renders from ``key``, and migrations tell a flat
+    ``general:border_size = 2`` line from a sectioned one by comparing the
+    two (see ``_rewrite_line_key``). A leaf-only ``key`` on a line with no
+    enclosing section drops the category on the next edit.
+    """
+
+    def test_key_holds_the_full_dotted_path(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.config({ general = { border_size = 2 } })\n")
+        line = next(ln for _doc, ln in load_lua(path).iter_lines() if isinstance(ln, Assignment))
+        assert line.key == line.full_key == "general:border_size"
+
+    def test_set_keeps_the_category_prefix(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.config({ general = { border_size = 2 } })\n")
+        doc = load_lua(path)
+        doc.set("general:border_size", 10)
+        assert serialize_hyprlang(doc) == "general:border_size = 10\n"
+
+    def test_device_fields_stay_leaf_keyed(self, tmp_path: Path) -> None:
+        # The device block is the one Lua-read shape that *is* sectioned —
+        # its fields keep the bare leaf so the section context survives.
+        path = _write_lua(tmp_path, "hl.device({ name = 'mouse', sensitivity = 0.5 })\n")
+        doc = load_lua(path)
+        doc.set("device:sensitivity", 0.8)
+        assert serialize_hyprlang(doc) == "device {\n    name = mouse\n    sensitivity = 0.8\n}\n"
 
 
 class TestKeywordCalls:

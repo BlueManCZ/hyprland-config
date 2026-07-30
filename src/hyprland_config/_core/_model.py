@@ -21,6 +21,15 @@ def _has_glob_chars(pattern: str) -> bool:
     return any(c in _GLOB_CHARS for c in pattern)
 
 
+def _target_is_lua(target: Path, doc_is_lua: bool) -> bool:
+    """Pick the output format for *target*: its suffix first, else the document's."""
+    if target.suffix == ".lua":
+        return True
+    if target.suffix == ".conf":
+        return False
+    return doc_is_lua
+
+
 def _format_kv_line(indent: str, key: str, value: str, inline_comment: str = "") -> str:
     comment_suffix = f" {inline_comment}" if inline_comment else ""
     return f"{indent}{key} = {value}{comment_suffix}\n"
@@ -202,12 +211,17 @@ class Document:
         variables: dict[str, str] | None = None,
         *,
         sources_followed: bool = False,
+        lua: bool = False,
     ) -> None:
         self.path = path
         self.lines: list[Line] = lines if lines is not None else []
         self.variables: dict[str, str] = variables if variables is not None else {}
         self.dirty: bool = False
         self.sources_followed: bool = sources_followed
+        # The line nodes are format-agnostic, so a document read from a Lua
+        # config is indistinguishable from a Hyprlang one without this —
+        # and :meth:`save` would write ``.conf`` syntax into ``hyprland.lua``.
+        self.lua: bool = lua
 
     @property
     def errors(self) -> list[ErrorLine]:
@@ -724,15 +738,32 @@ class Document:
 
         recursive defaults to True when sources were followed during parsing.
         Only files that were actually modified (dirty) are written.
+
+        The output format follows *path*'s suffix when it names one
+        (``.lua`` → Lua, ``.conf`` → Hyprlang), and otherwise the format the
+        document was loaded from — so a Lua config saves back as Lua, and
+        saving to the other suffix converts.
         """
+        # Only the document the caller reached for is the entry point, so
+        # that is where ``require`` names resolve from for the whole tree.
+        config_root = self.path.parent if self.path is not None else None
         if self._resolve_recursive(recursive):
             for sub in self._iter_sub_documents():
                 if sub.dirty:
-                    sub.save(recursive=False)
+                    sub._write(sub.path, config_root)
 
         if self.dirty or path is not None:
-            target = path or self.path
-            if target is None:
-                raise ValueError("No path specified and document has no path")
-            atomic_write(target, "".join(line.raw for line in self.lines))
-            self.dirty = False
+            self._write(path or self.path, config_root)
+
+    def _write(self, target: Path | None, config_root: Path | None) -> None:
+        """Serialize to *target* in the right format and clear the dirty flag."""
+        from hyprland_config._lua import serialize_lua_file  # circular: _lua needs Document
+
+        if target is None:
+            raise ValueError("No path specified and document has no path")
+        if _target_is_lua(target, self.lua):
+            content = serialize_lua_file(self, config_root=config_root)
+        else:
+            content = "".join(line.raw for line in self.lines)
+        atomic_write(target, content)
+        self.dirty = False

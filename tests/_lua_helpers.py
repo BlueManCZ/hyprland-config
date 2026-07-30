@@ -1,10 +1,24 @@
-"""Shared helpers for the split Lua-emitter test files."""
+"""Shared helpers for the Lua test files."""
 
 import functools
 import shutil
 import subprocess
 
 import pytest
+
+
+@functools.cache
+def _lua_available() -> bool:
+    return any(
+        shutil.which(name) is not None for name in ("lua", "lua5.5", "lua5.4", "lua5.3", "lua5.2")
+    )
+
+
+# The reader evaluates configs through the real interpreter, so tests that
+# read Lua need `lua` itself — `requires_lua` below only covers `luac`.
+requires_lua_interpreter = pytest.mark.skipif(
+    not _lua_available(), reason="no lua interpreter on PATH"
+)
 
 
 @functools.cache

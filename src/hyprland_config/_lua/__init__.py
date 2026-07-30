@@ -20,6 +20,7 @@ from hyprland_config._lua._emit import (
     keyword_to_lua,
     render_rule_lua,
     serialize_lua,
+    serialize_lua_file,
     serialize_lua_tree,
 )
 from hyprland_config._lua._read import LuaReaderError, load_lua
@@ -35,5 +36,6 @@ __all__ = [
     "load_lua",
     "render_rule_lua",
     "serialize_lua",
+    "serialize_lua_file",
     "serialize_lua_tree",
 ]
