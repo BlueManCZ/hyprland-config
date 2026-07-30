@@ -220,6 +220,21 @@ def serialize_lua(doc: Document) -> str:
     return _assemble_lua(state)
 
 
+def serialize_lua_file(doc: Document, *, config_root: Path | None = None) -> str:
+    """Render *doc*'s own lines as Lua, leaving sourced sub-files as includes.
+
+    The single-file counterpart to :func:`serialize_lua_tree`: sub-documents
+    aren't inlined the way :func:`serialize_lua` inlines them, so writing the
+    result back over *doc*'s path keeps a multi-file config split instead of
+    duplicating every sub-file's content into the parent. Each ``source``
+    position becomes a ``require`` (or ``dofile``) call resolved against
+    *config_root* — the main config file's directory, since that is what
+    Hyprland resolves ``require`` names against.
+    """
+    state = _render_doc(doc, config_root, doc.variables, _collect_cross_file_global_names(doc))
+    return _assemble_lua(state)
+
+
 def serialize_lua_tree(doc: Document) -> list[LuaFile]:
     """Emit one Lua file per parsed sub-document, mirroring source structure.
 
@@ -262,20 +277,15 @@ def _emit_doc_tree(
     root_variables: dict[str, str],
     global_names: frozenset[str],
 ) -> None:
-    state = _EmitState(variables=root_variables, global_var_names=global_names)
     for line in doc.lines:
         if isinstance(line, Source):
             for sub_doc in line.documents:
                 _emit_doc_tree(sub_doc, output, config_root, root_variables, global_names)
-                sub_lua_path = _conf_path_to_lua(sub_doc.path)
-                if sub_lua_path is not None:
-                    state.current.extras.append(_source_include(sub_lua_path, config_root))
-            continue
-        _process_line(line, state)
 
     out_path = _conf_path_to_lua(doc.path)
     if out_path is None or doc.path is None:
         return
+    state = _render_doc(doc, config_root, root_variables, global_names)
     output.append(
         LuaFile(
             path=out_path,
@@ -284,6 +294,25 @@ def _emit_doc_tree(
             unmapped=list(state.skipped),
         )
     )
+
+
+def _render_doc(
+    doc: Document,
+    config_root: Path | None,
+    root_variables: dict[str, str],
+    global_names: frozenset[str],
+) -> _EmitState:
+    """Process *doc*'s own lines, turning each Source into an include call."""
+    state = _EmitState(variables=root_variables, global_var_names=global_names)
+    for line in doc.lines:
+        if isinstance(line, Source):
+            for sub_doc in line.documents:
+                sub_lua_path = _conf_path_to_lua(sub_doc.path)
+                if sub_lua_path is not None:
+                    state.current.extras.append(_source_include(sub_lua_path, config_root))
+            continue
+        _process_line(line, state)
+    return state
 
 
 def _conf_path_to_lua(path: Path | None) -> Path | None:

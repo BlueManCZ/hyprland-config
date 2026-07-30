@@ -5,6 +5,17 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.14] - 2026-07-30
+
+### Added
+
+- `Document.lua` records whether a document was read from a Lua config, so consumers can tell the two formats apart without guessing from the file suffix.
+
+### Fixed
+
+- `Document.save()` writes Lua for documents read from a Lua config. It only ever emitted Hyprlang, so saving `hyprland.lua` (directly or through `hyprland-state`) replaced it with `.conf` syntax that Hyprland refuses to parse. A target path naming a format still wins, so saving a Lua document to `.conf` (or the reverse) converts it. https://github.com/BlueManCZ/hyprland-state/issues/2
+- Editing an option read from a Lua config keeps its category prefix. Those assignments held the bare leaf in `key` while sitting at top level with no enclosing section, so the first `set()` rewrote `general:border_size = 2` as `border_size = 2`, losing the category on the Hyprlang path and in `migrate()`. https://github.com/BlueManCZ/hyprland-state/issues/2
+
 ## [0.9.13] - 2026-07-27
 
 ### Added
@@ -372,6 +383,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.14]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.14
 [0.9.13]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.13
 [0.9.12]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.12
 [0.9.11]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.11

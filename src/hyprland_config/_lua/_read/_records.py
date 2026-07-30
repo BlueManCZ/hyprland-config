@@ -48,7 +48,7 @@ def records_to_document(
     on exit we pop. The shape mirrors what the Hyprlang parser produces
     for ``source = …`` so callers can iterate either format the same way.
     """
-    root = Document(path=entry_path, sources_followed=True)
+    root = Document(path=entry_path, sources_followed=True, lua=True)
     stack: list[Document] = [root]
     for rec in records:
         call = rec["call"]
@@ -95,7 +95,7 @@ def _open_sub_document(parent: Document, path_str: str, *, parent_source: str) -
         resolved = [sub_path.resolve()]
     except OSError:
         sub_path = None
-    sub_doc = Document(path=sub_path, sources_followed=True)
+    sub_doc = Document(path=sub_path, sources_followed=True, lua=True)
     source_node = Source(
         raw=f'dofile("{path_str}")\n',
         source_name=parent_source,

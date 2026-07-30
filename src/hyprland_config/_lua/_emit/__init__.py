@@ -25,6 +25,7 @@ from hyprland_config._lua._emit._walker import (
     LuaFile,
     render_rule_lua,
     serialize_lua,
+    serialize_lua_file,
     serialize_lua_tree,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "keyword_to_lua",
     "render_rule_lua",
     "serialize_lua",
+    "serialize_lua_file",
     "serialize_lua_tree",
 ]
