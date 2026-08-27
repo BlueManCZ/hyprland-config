@@ -328,6 +328,13 @@ class TestBindCalls:
         # bindel = repeating(e) + locked(l), suffix chars sorted.
         assert _keywords(load_lua(path), "bindel") == [", XF86AudioMute, exec, mute"]
 
+    def test_bind_with_description(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.bind('SUPER + B', hl.dsp.exec_cmd('firefox'), { description='Browser' })",
+        )
+        assert _keywords(load_lua(path), "bindd") == ["SUPER, B, Browser, exec, firefox"]
+
     def test_bindm_mouse(self, tmp_path: Path) -> None:
         path = _write_lua(
             tmp_path,

@@ -5,6 +5,12 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `parse_bind_line()` now separates the description field in `bindd` variants from the dispatcher and preserves it when serializing `BindData`. It previously parsed a described Lua keybind such as `bindd = SUPER, B, Browser, exec, firefox` as dispatcher `Browser`; editors consuming that model could replace the real command with an empty `exec` action. https://github.com/BlueManCZ/hyprmod/issues/88
+
 ## [0.9.17] - 2026-09-25
 
 ### Fixed

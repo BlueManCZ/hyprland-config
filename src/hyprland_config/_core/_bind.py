@@ -18,6 +18,11 @@ BIND_FLAG_MAP: dict[str, str] = {
 }
 
 
+def has_description_flag(bind_type: str) -> bool:
+    """Return whether a bind keyword carries the ``d`` description flag."""
+    return bind_type.startswith("bind") and "d" in bind_type[4:]
+
+
 @dataclass(slots=True)
 class BindData:
     """A single keybind definition."""
@@ -27,6 +32,7 @@ class BindData:
     key: str = ""
     dispatcher: str = ""
     arg: str = ""
+    description: str = ""
 
     @property
     def combo(self) -> tuple[tuple[str, ...], str]:
@@ -47,10 +53,13 @@ class BindData:
         with ``bind: too many args``, so the trailing comma is omitted when
         ``arg`` is empty. Other bind variants tolerate either form.
         """
-        line = f"{self.bind_type} = {self.mods_str}, {self.key}, {self.dispatcher}"
+        parts = [f"{self.bind_type} = {self.mods_str}", self.key]
+        if has_description_flag(self.bind_type):
+            parts.append(self.description)
+        parts.append(self.dispatcher)
         if self.arg:
-            line += f", {self.arg}"
-        return line
+            parts.append(self.arg)
+        return ", ".join(parts)
 
     def format_shortcut(self) -> str:
         """Format key combination for display: ``'SUPER + SHIFT + A'``."""

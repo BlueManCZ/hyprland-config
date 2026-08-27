@@ -11,6 +11,7 @@ class TestParseBind:
         bd = parse_bind_line("bind = SUPER, Q, killactive,")
         assert bd is not None
         assert bd.bind_type == "bind"
+        assert bd.description == ""
         assert bd.mods == ["SUPER"]
         assert bd.key == "Q"
         assert bd.dispatcher == "killactive"
@@ -46,6 +47,24 @@ class TestParseBind:
         assert bd.dispatcher == "layoutmsg"
         assert bd.arg == "togglesplit"
 
+    def test_bindd_separates_description_from_dispatcher(self):
+        bd = parse_bind_line("bindd = SUPER, B, Browser, exec, omarchy-launch-browser")
+
+        assert bd is not None
+        assert bd.description == "Browser"
+        assert bd.dispatcher == "exec"
+        assert bd.arg == "omarchy-launch-browser"
+        assert bd.to_line() == "bindd = SUPER, B, Browser, exec, omarchy-launch-browser"
+
+    def test_combined_description_flag_is_supported(self):
+        bd = parse_bind_line("binded = SUPER SHIFT, left, Resize left, resizeactive, -50 0")
+
+        assert bd is not None
+        assert bd.bind_type == "binded"
+        assert bd.description == "Resize left"
+        assert bd.dispatcher == "resizeactive"
+        assert bd.arg == "-50 0"
+
 
 class TestBindData:
     def test_to_line(self):
@@ -66,6 +85,30 @@ class TestBindData:
             arg="",
         )
         assert bd.to_line() == "bindm = SUPER, mouse:272, movewindow"
+
+    def test_to_line_preserves_bind_description(self):
+        bd = BindData(
+            bind_type="bindd",
+            mods=["SUPER"],
+            key="B",
+            description="Browser",
+            dispatcher="exec",
+            arg="omarchy-launch-browser",
+        )
+
+        assert bd.to_line() == "bindd = SUPER, B, Browser, exec, omarchy-launch-browser"
+
+    def test_to_line_requires_bind_prefix_for_description_flag(self):
+        bd = BindData(
+            bind_type="customd",
+            mods=["SUPER"],
+            key="B",
+            description="Browser",
+            dispatcher="exec",
+            arg="firefox",
+        )
+
+        assert bd.to_line() == "customd = SUPER, B, exec, firefox"
 
     def test_combo_normalized(self):
         bd1 = BindData(mods=["SUPER", "SHIFT"], key="q")

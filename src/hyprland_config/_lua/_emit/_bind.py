@@ -13,7 +13,7 @@ produce the same Lua call shape.
 
 from typing import Any
 
-from hyprland_config._core._bind import BIND_FLAG_MAP, BindData
+from hyprland_config._core._bind import BIND_FLAG_MAP, has_description_flag
 from hyprland_config._hyprlang._bind import parse_bind_line
 from hyprland_config._lua._emit._dispatchers import translate_dispatcher
 from hyprland_config._lua._emit._format import VAR_MARKER_OPEN, format_table, quote_string
@@ -104,29 +104,6 @@ def _format_key_combo(mods: list[str], key: str) -> str:
     return " + ".join(parts)
 
 
-def _parse_bindd_args(bind_type: str, args: str) -> tuple[BindData, str] | None:
-    """Parse ``bindd``-family args (with the extra description field).
-
-    ``bindd``-style binds carry an extra description string between the key
-    and the dispatcher: ``MODS, KEY, DESCRIPTION, DISPATCHER [, ARG]``.
-    Returns the bind plus the description, or ``None`` if the line can't be
-    decoded (fewer than four comma-separated parts).
-    """
-    parts = [p.strip() for p in args.split(",", 4)]
-    if len(parts) < 4:
-        return None
-    mods_str, key_name, description, dispatcher = parts[0], parts[1], parts[2], parts[3]
-    arg = parts[4] if len(parts) > 4 else ""
-    bind = BindData(
-        bind_type=bind_type,
-        mods=mods_str.split() if mods_str else [],
-        key=key_name,
-        dispatcher=dispatcher,
-        arg=arg,
-    )
-    return bind, description
-
-
 def emit_unbind(args: str) -> str | None:
     """Emit ``hl.unbind("MODS + KEY")`` from a Hyprlang ``unbind = MODS, KEY``.
 
@@ -156,22 +133,14 @@ def emit_bind(bind_type: str, args: str) -> str | None:
     unrecognised dispatcher, or a malformed line the bind parser can't decode.
     """
     suffix = bind_type.removeprefix("bind")
-    has_description = "d" in suffix
+    has_description = has_description_flag(bind_type)
     bool_flags = _bind_flags_from_suffix(suffix.replace("d", ""))
     if bool_flags is None:
         return None
 
-    if has_description:
-        parsed = _parse_bindd_args(bind_type, args)
-        if parsed is None:
-            return None
-        bind, description = parsed
-    else:
-        parsed_bind = parse_bind_line(f"{bind_type} = {args}")
-        if parsed_bind is None:
-            return None
-        bind = parsed_bind
-        description = None
+    bind = parse_bind_line(f"{bind_type} = {args}")
+    if bind is None:
+        return None
 
     # ``bindm`` is the mouse variant; combined forms like ``bindmd`` carry
     # the mouse semantics too, so check the whole suffix.
@@ -181,8 +150,8 @@ def emit_bind(bind_type: str, args: str) -> str | None:
         return None
 
     flags: dict[str, Any] = dict(bool_flags)
-    if description is not None:
-        flags["description"] = description
+    if has_description:
+        flags["description"] = bind.description
 
     key_combo = quote_string(_format_key_combo(bind.mods, bind.key))
     if flags:
