@@ -5,6 +5,15 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.16] - 2026-08-27
+
+### Fixed
+
+- `fullscreen`, `cyclenext` and `swapnext` keep the mode their Hyprlang arg selects. All three translated to their bare Lua call, so `bind = SUPER, F, fullscreen, 1` emitted `hl.dsp.window.fullscreen()` and the bind toggled full screen instead of maximizing. They now emit `mode`/`action`, `next`/`tiled`/`floating` and `next`/`prev` respectively, and the reverse reader maps each back to its Hyprlang arg. https://github.com/BlueManCZ/hyprmod/issues/86
+  - `fullscreen, 2` still emits the plain call: Hyprland has read every mode but `1` as full screen since the fullscreen-state refactor, and the Lua binding rejects a literal `"2"`.
+  - `swapnext, prev` emits `{ prev = true }`, not `{ next = false }` — the Lua binding looks for a truthy `next` or `prev` and errors on a table with neither.
+  - `cyclenext`'s `visible` and `hist` modes are dropped, matching what Hyprland's own legacy translator does with them.
+
 ## [0.9.15] - 2026-08-27
 
 ### Fixed
@@ -394,6 +403,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.16]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.16
 [0.9.15]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.15
 [0.9.14]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.14
 [0.9.13]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.13

@@ -386,6 +386,78 @@ class TestGroupAndPassDispatchers:
         )
 
 
+class TestModeCarryingDispatchers:
+    """Dispatchers whose Hyprlang arg selects a mode rather than a target.
+
+    Each one used to translate to its bare Lua call, so the mode was lost
+    without a word. https://github.com/BlueManCZ/hyprmod/issues/86
+    """
+
+    @pytest.mark.parametrize(
+        ("arg", "expected"),
+        [
+            ("", "hl.dsp.window.fullscreen()"),
+            ("0", "hl.dsp.window.fullscreen()"),
+            ("1", 'hl.dsp.window.fullscreen({ mode = "maximized" })'),
+            # Hyprland folded mode 2 into plain fullscreen, and the Lua
+            # binding rejects the literal "2".
+            ("2", "hl.dsp.window.fullscreen()"),
+            ("1 set", 'hl.dsp.window.fullscreen({ mode = "maximized", action = "set" })'),
+            ("0 unset", 'hl.dsp.window.fullscreen({ action = "unset" })'),
+            ("1 toggle", 'hl.dsp.window.fullscreen({ mode = "maximized" })'),
+        ],
+    )
+    def test_fullscreen_mode_and_action(self, arg: str, expected: str) -> None:
+        out = serialize_lua(parse_string(f"bind = SUPER, F, fullscreen, {arg}\n"))
+        assert expected in out
+
+    @pytest.mark.parametrize(
+        ("arg", "expected"),
+        [
+            ("", "hl.dsp.window.cycle_next()"),
+            ("prev", "hl.dsp.window.cycle_next({ next = false })"),
+            ("last tiled", "hl.dsp.window.cycle_next({ next = false, tiled = true })"),
+            ("floating", "hl.dsp.window.cycle_next({ floating = true })"),
+            # ``next`` overrides ``prev``, as in Hyprland's own translator.
+            ("prev next", "hl.dsp.window.cycle_next()"),
+        ],
+    )
+    def test_cyclenext_direction_and_filter(self, arg: str, expected: str) -> None:
+        out = serialize_lua(parse_string(f"bind = ALT, Tab, cyclenext, {arg}\n"))
+        assert expected in out
+
+    def test_cyclenext_drops_unmappable_modes(self) -> None:
+        # ``visible``/``hist`` have no Lua counterpart and Hyprland drops
+        # them on its own legacy path too.
+        out = serialize_lua(parse_string("bind = ALT, Tab, cyclenext, visible hist\n"))
+        assert "hl.dsp.window.cycle_next()" in out
+
+    @pytest.mark.parametrize(
+        ("arg", "expected"),
+        [
+            ("", "hl.dsp.window.swap({ next = true })"),
+            # ``{ next = false }`` isn't a table the Lua binding accepts.
+            ("prev", "hl.dsp.window.swap({ prev = true })"),
+            ("last", "hl.dsp.window.swap({ prev = true })"),
+        ],
+    )
+    def test_swapnext_direction(self, arg: str, expected: str) -> None:
+        out = serialize_lua(parse_string(f"bind = SUPER, Tab, swapnext, {arg}\n"))
+        assert expected in out
+
+    @requires_lua
+    def test_emitted_calls_compile(self) -> None:
+        assert_lua_compiles(
+            serialize_lua(
+                parse_string(
+                    "bind = SUPER, F, fullscreen, 1 set\n"
+                    "bind = ALT, Tab, cyclenext, prev tiled\n"
+                    "bind = SUPER, Tab, swapnext, prev\n"
+                )
+            )
+        )
+
+
 class TestBindd:
     """The ``bindd`` family carries an extra description field.
 

@@ -732,6 +732,38 @@ class TestGroupAndPassDispatcherReads:
         assert _keywords(load_lua(path), "bind") == [f"SUPER, g, {expected}"]
 
 
+class TestModeCarryingDispatcherReads:
+    """The mode a Lua call carries has to come back as a Hyprlang arg.
+
+    https://github.com/BlueManCZ/hyprmod/issues/86
+    """
+
+    @pytest.mark.parametrize(
+        ("call", "expected"),
+        [
+            ("hl.dsp.window.fullscreen()", "SUPER, F, fullscreen"),
+            ("hl.dsp.window.fullscreen({ mode = 'maximized' })", "SUPER, F, fullscreen, 1"),
+            (
+                "hl.dsp.window.fullscreen({ mode = 'maximized', action = 'set' })",
+                "SUPER, F, fullscreen, 1 set",
+            ),
+            # An action needs a mode in front of it to land in the second
+            # position Hyprlang reads it from.
+            ("hl.dsp.window.fullscreen({ action = 'unset' })", "SUPER, F, fullscreen, 0 unset"),
+            ("hl.dsp.window.cycle_next()", "SUPER, F, cyclenext"),
+            (
+                "hl.dsp.window.cycle_next({ next = false, tiled = true })",
+                "SUPER, F, cyclenext, prev tiled",
+            ),
+            ("hl.dsp.window.swap({ next = true })", "SUPER, F, swapnext"),
+            ("hl.dsp.window.swap({ prev = true })", "SUPER, F, swapnext, prev"),
+        ],
+    )
+    def test_mode_survives_the_read(self, tmp_path: Path, call: str, expected: str) -> None:
+        path = _write_lua(tmp_path, f"hl.bind('SUPER + F', {call})")
+        assert _keywords(load_lua(path), "bind") == [expected]
+
+
 class TestRoundTripWithEmitter:
     """``parse_string`` → ``serialize_lua`` → ``load_lua`` keeps the
     same option set."""
@@ -782,6 +814,9 @@ class TestRoundTripWithEmitter:
             "bind = SUPER, g, lockgroups, unlock\n"
             "bind = SUPER, k, lockactivegroup, toggle\n"
             "bind = SUPER, d, denywindowfromgroup, on\n"
+            "bind = SUPER, F, fullscreen, 1 set\n"
+            "bind = ALT, Tab, cyclenext, prev tiled\n"
+            "bind = SUPER, Tab, swapnext, prev\n"
         )
         assert _keywords(self._via_lua(src, tmp_path), "bind") == [
             ln.split(" = ", 1)[1] for ln in src.splitlines()

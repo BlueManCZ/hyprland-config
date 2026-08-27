@@ -22,8 +22,6 @@ _SIMPLE_DSP_NAMES: dict[str, tuple[str, str]] = {
     "window.pseudo": ("pseudo", ""),
     "window.center": ("centerwindow", ""),
     "window.pin": ("pin", ""),
-    "window.fullscreen": ("fullscreen", ""),
-    "window.cycle_next": ("cyclenext", ""),
     "window.drag": ("movewindow", ""),
     "window.resize": ("resizewindow", ""),
     "window.bring_to_top": ("bringactivetotop", ""),
@@ -88,6 +86,10 @@ def dispatcher_to_hyprlang(dispatcher: Any) -> tuple[str, str]:
         if args and isinstance(args[0], dict):
             return ("tagwindow", str(args[0].get("tag", "")))
         return ("tagwindow", "")
+    if name == "window.fullscreen":
+        return _fullscreen(args[0] if args else None)
+    if name == "window.cycle_next":
+        return _cycle_next(args[0] if args else None)
     if name == "window.fullscreen_state":
         return _fullscreen_state(args[0] if args else None)
     if name == "exec_raw":
@@ -132,6 +134,37 @@ def _swap_monitors(arg: Any) -> tuple[str, str]:
     if not isinstance(arg, dict):
         return ("swapactiveworkspaces", "")
     return ("swapactiveworkspaces", f"{arg.get('monitor1', '')} {arg.get('monitor2', '')}".strip())
+
+
+def _fullscreen(arg: Any) -> tuple[str, str]:
+    """Lua: ``hl.dsp.window.fullscreen({mode?, action?})`` →
+    Hyprlang: ``fullscreen[, MODE [set|unset]]``.
+
+    The mode is only worth writing out when it isn't the default full
+    screen, or when an action needs a mode in front of it to sit in the
+    second position Hyprlang reads it from.
+    """
+    mode = "1" if isinstance(arg, dict) and str(arg.get("mode", "")) in ("maximized", "1") else "0"
+    action = str(arg.get("action", "")) if isinstance(arg, dict) else ""
+    if action in ("set", "unset"):
+        return ("fullscreen", f"{mode} {action}")
+    return ("fullscreen", mode if mode == "1" else "")
+
+
+def _cycle_next(arg: Any) -> tuple[str, str]:
+    """Lua: ``hl.dsp.window.cycle_next({next?, tiled?, floating?})`` →
+    Hyprlang: ``cyclenext[, prev] [tiled] [floating]``.
+    """
+    if not isinstance(arg, dict):
+        return ("cyclenext", "")
+    words = []
+    if arg.get("next") is False:
+        words.append("prev")
+    if arg.get("tiled"):
+        words.append("tiled")
+    if arg.get("floating"):
+        words.append("floating")
+    return ("cyclenext", " ".join(words))
 
 
 def _fullscreen_state(arg: Any) -> tuple[str, str]:
@@ -212,6 +245,8 @@ def _window_swap(arg: Any) -> tuple[str, str]:
         return ("swapwindow", _DIRECTION_TO_HYPRLANG.get(arg["direction"], str(arg["direction"])))
     if arg.get("next"):
         return ("swapnext", "")
+    if arg.get("prev"):
+        return ("swapnext", "prev")
     return ("swapwindow", "")
 
 

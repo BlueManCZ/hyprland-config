@@ -151,6 +151,57 @@ def _dispatch_pin(arg: str) -> str:
     return f"hl.dsp.window.pin({{ window = {quote_string(selector)} }})"
 
 
+def _dispatch_fullscreen(arg: str) -> str:
+    """``fullscreen [MODE] [toggle|set|unset]`` → ``hl.dsp.window.fullscreen([{…}])``.
+
+    Hyprland reads mode ``1`` as maximize and every other mode (including the
+    long-obsolete ``2``) as full screen, so only ``1`` needs spelling out — and
+    it has to be spelled ``"maximized"``, since the Lua binding accepts only
+    ``fullscreen``/``0`` and ``maximized``/``1`` and errors on anything else.
+    """
+    tokens = arg.split()
+    parts = []
+    if tokens and tokens[0] == "1":
+        parts.append('mode = "maximized"')
+    if len(tokens) > 1 and tokens[1] in ("set", "unset"):
+        parts.append(f'action = "{tokens[1]}"')
+    if not parts:
+        return "hl.dsp.window.fullscreen()"
+    return f"hl.dsp.window.fullscreen({{ {', '.join(parts)} }})"
+
+
+def _dispatch_cyclenext(arg: str) -> str:
+    """``cyclenext [prev] [tiled|floating]`` → ``hl.dsp.window.cycle_next([{…}])``.
+
+    Hyprland's own legacy translator drops the ``visible`` and ``hist`` modes
+    on the way to the new API, so they're dropped here too rather than
+    reported as untranslatable.
+    """
+    tokens = {token.lower() for token in arg.replace(",", " ").split()}
+    parts = []
+    if tokens & {"prev", "p", "last", "l"} and not tokens & {"next", "n"}:
+        parts.append("next = false")
+    if tokens & {"tile", "tiled"}:
+        parts.append("tiled = true")
+    if tokens & {"float", "floating"}:
+        parts.append("floating = true")
+    if not parts:
+        return "hl.dsp.window.cycle_next()"
+    return f"hl.dsp.window.cycle_next({{ {', '.join(parts)} }})"
+
+
+def _dispatch_swapnext(arg: str) -> str:
+    """``swapnext [prev]`` → ``hl.dsp.window.swap({ next|prev = true })``.
+
+    The backwards direction is ``prev = true``, not ``next = false``: the Lua
+    binding only looks for a truthy ``next`` or ``prev`` and rejects the table
+    when it finds neither.
+    """
+    if arg.strip().lower() in ("l", "last", "prev", "b", "back"):
+        return "hl.dsp.window.swap({ prev = true })"
+    return "hl.dsp.window.swap({ next = true })"
+
+
 def _dispatch_fullscreenstate(arg: str) -> str | None:
     """``fullscreenstate INTERNAL CLIENT[,address:0x…]`` → ``hl.dsp.window.fullscreen_state({…})``.
 
@@ -402,10 +453,8 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     "killactive": lambda *_: "hl.dsp.window.close()",
     "closewindow": lambda *_: "hl.dsp.window.close()",
     "forcekillactive": lambda *_: "hl.dsp.window.kill()",
-    "fullscreen": lambda *_: "hl.dsp.window.fullscreen()",
     "pseudo": lambda *_: "hl.dsp.window.pseudo()",
     "centerwindow": lambda *_: "hl.dsp.window.center()",
-    "cyclenext": lambda *_: "hl.dsp.window.cycle_next()",
     "togglesplit": lambda *_: 'hl.dsp.layout("togglesplit")',
     "swapsplit": lambda *_: 'hl.dsp.layout("swapsplit")',
     "togglegroup": lambda *_: "hl.dsp.group.toggle()",
@@ -415,7 +464,6 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     "focusurgentorlast": lambda *_: "hl.dsp.focus({ urgent_or_last = true })",
     "bringactivetotop": lambda *_: "hl.dsp.window.bring_to_top()",
     "noop": lambda *_: "hl.dsp.no_op()",
-    "swapnext": lambda *_: "hl.dsp.window.swap({ next = true })",
     # Window-selector aware (handle empty arg internally)
     "togglefloating": lambda arg, _: _dispatch_window_float("toggle", arg),
     "setfloating": lambda arg, _: _dispatch_window_float("set", arg),
@@ -459,6 +507,9 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     "focusworkspaceoncurrentmonitor": lambda arg, _: _dispatch_focusworkspaceoncurrentmonitor(arg),
     "swapactiveworkspaces": lambda arg, _: _dispatch_swapactiveworkspaces(arg),
     "pass": lambda arg, _: _dispatch_pass(arg),
+    "fullscreen": lambda arg, _: _dispatch_fullscreen(arg),
+    "cyclenext": lambda arg, _: _dispatch_cyclenext(arg),
+    "swapnext": lambda arg, _: _dispatch_swapnext(arg),
     # Toggle-style args, each with its own accepted enable spelling. An empty
     # arg enables ``lockgroups`` but disables ``lockactivegroup``, matching
     # Hyprland's own two parsers.
