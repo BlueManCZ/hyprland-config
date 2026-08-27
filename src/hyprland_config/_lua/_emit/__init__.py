@@ -21,9 +21,9 @@ from hyprland_config._lua._emit._live_apply import (
     emit_option_assignment,
     keyword_to_lua,
 )
+from hyprland_config._lua._emit._rules import render_rule_lua
 from hyprland_config._lua._emit._walker import (
     LuaFile,
-    render_rule_lua,
     serialize_lua,
     serialize_lua_file,
     serialize_lua_tree,

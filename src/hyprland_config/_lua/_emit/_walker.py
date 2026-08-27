@@ -58,8 +58,6 @@ from hyprland_config._core._model import (
     Source,
     Variable,
 )
-from hyprland_config._core._rules import LAYER_BOOL_EFFECTS, V3_BOOL_EFFECTS
-from hyprland_config._core._values import parse_hyprlang_bool
 from hyprland_config._hyprlang._bind import is_bind_keyword
 from hyprland_config._lua._emit._bind import emit_bind, is_modifier_token
 from hyprland_config._lua._emit._conditional import translate_expression
@@ -81,7 +79,7 @@ from hyprland_config._lua._emit._format import (
 )
 from hyprland_config._lua._emit._keywords import format_exec_block
 from hyprland_config._lua._emit._live_apply import STATIC_KEYWORD_EMITTERS
-from hyprland_config._lua._emit._rules import add_block_rule_field
+from hyprland_config._lua._emit._rules import add_block_rule_field, render_rule_lua
 
 
 @dataclass
@@ -758,29 +756,6 @@ def _process_line(line: Line, state: _EmitState) -> None:
         _emit_rule(line, state)
 
 
-def render_rule_lua(rule: Rule) -> str:
-    """Render a structured :class:`Rule` as one ``hl.window_rule({…})``
-    / ``hl.layer_rule({…})`` call string.
-
-    Both rule kinds share the same table shape (``name``, ``enabled``,
-    ``match``, plus effect fields); only the wrapping function differs.
-    Used by the walker for full-document emission and by single-Rule
-    consumers (e.g. hyprmod's edit-dialog Lua preview) that need the
-    same snippet without standing up a Document.
-    """
-    table: dict[str, Any] = {}
-    if rule.name:
-        table["name"] = rule.name
-    if not rule.enabled:
-        table["enabled"] = False
-    if rule.matchers:
-        table["match"] = {k: coerce_value(v) for k, v in rule.matchers}
-    for name, args in rule.effects:
-        table[name] = _effect_value_to_lua(name, args)
-    fn = "hl.layer_rule" if rule.kind == "layerrule" else "hl.window_rule"
-    return f"{fn}({format_table(table, indent=0)})"
-
-
 def _emit_rule(rule: Rule, state: _EmitState) -> None:
     # Marker-substitute ``$var`` refs in matcher/effect values so they survive
     # as ``var_X`` Lua names rather than leaking as the literal string ``"$var"``
@@ -798,25 +773,6 @@ def _emit_rule(rule: Rule, state: _EmitState) -> None:
         ],
     )
     state.current.extras.append(render_rule_lua(expanded))
-
-
-def _effect_value_to_lua(name: str, args: str) -> Any:
-    """Coerce a Rule's stringly-typed effect args back to Lua-native form.
-
-    Bool effects come in as ``"on"`` / ``"off"`` from the Hyprlang side;
-    Lua wants ``true`` / ``false``. Numeric and string args route through
-    :func:`coerce_value` so quoted/escaped output matches what the user
-    would write by hand. Empty args on a known bool effect default to
-    ``true`` (Hyprland's "missing value" interpretation for these names).
-    """
-    stripped = args.strip()
-    if name in V3_BOOL_EFFECTS or name in LAYER_BOOL_EFFECTS:
-        if not stripped:
-            return True
-        parsed = parse_hyprlang_bool(stripped)
-        if parsed is not None:
-            return parsed
-    return coerce_value(stripped)
 
 
 def _try_translate_hyprctl_dispatch(cmd: str) -> str | None:

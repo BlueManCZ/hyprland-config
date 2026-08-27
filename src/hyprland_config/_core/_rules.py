@@ -1,11 +1,14 @@
-"""v3 windowrule / layerrule grammar constants.
+"""v3 windowrule / layerrule grammar constants and body tokeniser.
 
 The boolean-effect and boolean-matcher sets are intrinsic to the rule
 grammar — Hyprland 0.53+ rejects bare boolean effects with "missing a value",
 so every emitter (live-apply via ``hl.keyword``, on-disk serialization, the
 v2→v3 migration) needs to auto-fill ``on``. Centralised here so the three
-consumers share one source of truth.
+consumers share one source of truth, along with :func:`split_rule_body`,
+which reads a single-line rule body the same way for all of them.
 """
+
+from hyprland_config._core._rule_split import split_top_level
 
 # v3 ``windowrule`` effects whose only argument is a boolean. Emitters
 # auto-fill ``on`` when the args field is empty so Hyprland 0.53+ accepts
@@ -137,3 +140,39 @@ V3_TO_LEGACY_LAYER_EFFECT: dict[str, str] = {
     "dim_around": "dimaround",
     "ignore_alpha": "ignorealpha",
 }
+
+
+def split_rule_body(body: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Tokenise a v3 single-line rule body into ``(matchers, effects)``.
+
+    Single-line rules carry no name or enable flag — Hyprland's handler
+    rejects those tokens — so this returns only the matcher and effect
+    pairs, each in source order. Bool effects written without a value
+    (``float`` on its own) get ``"on"`` filled in to match Hyprland
+    0.53+ requirements.
+
+    Shared by the normalisation pass that builds :class:`Rule` nodes and
+    by the Lua emitter that translates a raw keyword line, so a rule
+    means the same thing whether it arrived as a document node or as a
+    live ``hyprctl keyword`` payload.
+    """
+    matchers: list[tuple[str, str]] = []
+    effects: list[tuple[str, str]] = []
+    for token in split_top_level(body):
+        stripped = token.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("match:"):
+            rest = stripped[len("match:") :]
+            key, _, value = rest.partition(" ")
+            matchers.append((key.strip(), value.strip()))
+            continue
+        name, _, args = stripped.partition(" ")
+        name = name.strip()
+        args = args.strip()
+        if not name:
+            continue
+        if not args and name in V3_BOOL_EFFECTS:
+            args = "on"
+        effects.append((name, args))
+    return matchers, effects

@@ -1,6 +1,9 @@
 """Per-keyword Lua emitters — env, monitor, bezier, animation, rules, exec, device."""
 
-from hyprland_config import parse_string, serialize_lua
+import pytest
+
+from hyprland_config import Rule, keyword_to_lua, normalize_rules, parse_string, serialize_lua
+from hyprland_config._lua import render_rule_lua
 
 
 class TestEnvKeyword:
@@ -357,6 +360,73 @@ class TestModernWindowRule:
         out = serialize_lua(parse_string("layerrule = match:namespace ^waybar$, blur on\n"))
         assert 'namespace = "^waybar$"' in out
         assert "blur = true" in out
+
+    def test_every_effect_survives(self) -> None:
+        # One v3 line can carry several effects. Only the first used to
+        # reach the Lua table; the rest were dropped without a word.
+        out = serialize_lua(
+            parse_string(
+                "windowrule = match:class ^(kitty)$, float on, opacity 0.8, size 800 600\n"
+            )
+        )
+        assert "float = true" in out
+        assert "opacity = 0.8" in out
+        assert 'size = "800 600"' in out
+
+    def test_every_layerrule_effect_survives(self) -> None:
+        out = serialize_lua(
+            parse_string("layerrule = match:namespace ^(waybar)$, blur on, ignore_alpha 0.5\n")
+        )
+        assert "blur = true" in out
+        assert "ignore_alpha = 0.5" in out
+
+    def test_effects_keep_their_authored_order(self) -> None:
+        out = serialize_lua(
+            parse_string("windowrule = match:class ^(kitty)$, rounding 8, float on, opacity 0.8\n")
+        )
+        assert out.index("rounding = 8") < out.index("float = true") < out.index("opacity = 0.8")
+
+    def test_effectless_rule_goes_to_manual_conversion(self) -> None:
+        # Hyprland rejects a rule with nothing to apply. Emitting Lua for it
+        # would be a no-op the user never finds out about, so the line lands
+        # in the trailing manual-conversion block instead.
+        out = serialize_lua(parse_string("windowrule = match:class ^(kitty)$\n"))
+        assert "hl.window_rule" not in out
+        assert "windowrule = match:class ^(kitty)$" in out
+
+
+class TestRuleLiveApplyMatchesTheFile:
+    """``keyword_to_lua`` and the document walker have to agree on a rule.
+
+    They are the two ways a rule reaches Hyprland: pushed live through
+    ``hyprctl eval``, or written to the config. When they disagree, an
+    editor applies one thing now and saves a different one for later.
+    """
+
+    RULES = [
+        "match:class ^(kitty)$, float on",
+        "match:class ^(kitty)$, float on, opacity 0.8, size 800 600",
+        "match:class ^(kitty)$, match:title ^(scratch)$, no_blur on, rounding 8",
+        "stay_focused on, match:title ^Albert$",
+    ]
+
+    @pytest.mark.parametrize("body", RULES)
+    def test_live_snippet_matches_the_written_rule(self, body: str) -> None:
+        doc = parse_string(f"windowrule = {body}\n")
+        normalize_rules(doc)
+        written = [render_rule_lua(line) for line in doc.lines if isinstance(line, Rule)]
+        assert keyword_to_lua("windowrule", body) == written[0]
+
+    def test_live_push_carries_every_effect(self) -> None:
+        snippet = keyword_to_lua("windowrule", "match:class ^(kitty)$, float on, opacity 0.8")
+        assert "float = true" in snippet
+        assert "opacity = 0.8" in snippet
+
+    def test_effectless_rule_raises_instead_of_emitting_a_comment(self) -> None:
+        # A Lua comment evaluates fine, so the caller would report success
+        # for a rule the compositor never received.
+        with pytest.raises(ValueError, match="keyword 'windowrule'"):
+            keyword_to_lua("windowrule", "match:class ^(kitty)$")
 
 
 class TestBlockRuleSyntax:

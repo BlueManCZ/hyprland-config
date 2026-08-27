@@ -21,12 +21,12 @@ from hyprland_config._core._model import (
     SectionClose,
     SectionOpen,
 )
-from hyprland_config._core._rule_split import split_top_level
 from hyprland_config._core._rules import (
     V2_EFFECT_REPLACEMENTS,
     V2_TO_V3_EFFECT,
     V2_TO_V3_MATCHER,
     V3_BOOL_EFFECTS,
+    split_rule_body,
 )
 from hyprland_config._core._values import parse_hyprlang_bool
 from hyprland_config._migrate._helpers import transform_lines
@@ -339,38 +339,6 @@ def _collect_block_fields(
     return name, matchers, effects, enabled
 
 
-def _parse_single_line_body(
-    body: str,
-) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Tokenise a v3 single-line rule body into (matchers, effects).
-
-    Single-line rules carry no name or enable flag — Hyprland's
-    handler rejects those tokens — so this returns only the matcher
-    and effect pairs. Bool effects without an explicit value (``float``
-    on its own) get ``"on"`` filled in to match Hyprland 0.53+ requirements.
-    """
-    matchers: list[tuple[str, str]] = []
-    effects: list[tuple[str, str]] = []
-    for token in split_top_level(body):
-        stripped = token.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("match:"):
-            rest = stripped[len("match:") :]
-            key, _, value = rest.partition(" ")
-            matchers.append((key.strip(), value.strip()))
-            continue
-        name, _, args = stripped.partition(" ")
-        name = name.strip()
-        args = args.strip()
-        if not name:
-            continue
-        if not args and name in V3_BOOL_EFFECTS:
-            args = "on"
-        effects.append((name, args))
-    return matchers, effects
-
-
 def _rule_from_keyword(kw: Keyword) -> Rule | None:
     """Build a Rule from a single-line ``windowrule = …`` / ``layerrule = …``
     Keyword. Returns ``None`` when:
@@ -385,7 +353,7 @@ def _rule_from_keyword(kw: Keyword) -> Rule | None:
     """
     if "match:" not in kw.value:
         return None
-    matchers, effects = _parse_single_line_body(kw.value)
+    matchers, effects = split_rule_body(kw.value)
     if not effects:
         return None
     return Rule(

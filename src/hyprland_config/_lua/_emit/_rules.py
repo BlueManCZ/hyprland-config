@@ -8,7 +8,13 @@ the document walker because it spans multiple input lines.
 
 from typing import Any
 
+from hyprland_config._core._model import Rule
 from hyprland_config._core._rule_split import split_top_level
+from hyprland_config._core._rules import (
+    LAYER_BOOL_EFFECTS,
+    V3_BOOL_EFFECTS,
+    split_rule_body,
+)
 from hyprland_config._core._values import parse_hyprlang_bool
 from hyprland_config._lua._emit._format import (
     coerce_value,
@@ -52,95 +58,84 @@ def add_block_rule_field(buffer: dict[str, Any], key: str, value: str) -> None:
     buffer[key] = coerce_value(value)
 
 
-def _parse_rule_action(action: str) -> tuple[str, Any]:
-    """Split a rule action like ``opacity 0.9`` into ``(name, value)``.
+def _legacy_window_matchers(parts: list[str], v2: bool) -> list[tuple[str, str]]:
+    """Read pre-v3 windowrule matcher tokens into ``(key, value)`` pairs.
 
-    Hyprland's modern (v3) windowrule syntax uses ``ACTION VALUE`` for both
-    bool flags (``float on`` / ``pin off``) and valued actions (``opacity 0.9``,
-    ``bordercolor rgba(…)``, ``suppress_event maximize``). Legacy v1 just has
-    a bare flag (``float``).
-    """
-    head, sep, tail = action.partition(" ")
-    head = head.strip()
-    tail = tail.strip()
-    if not sep:
-        return head, True
-    low = tail.lower()
-    if low == "on":
-        return head, True
-    if low == "off":
-        return head, False
-    return head, coerce_value(tail)
+    Two syntaxes predate the ``match:KEY VALUE`` grammar:
 
+    - v2 (keyword ``windowrulev2``): ``class:^kitty$``, ``title:bar`` —
+      ``key:value`` tokens.
+    - v1 (keyword ``windowrule``): a single bare regex matching the class.
 
-def _parse_matchers(parts: list[str], v2: bool) -> dict[str, Any]:
-    """Build a ``match = { … }`` table from windowrule matcher tokens.
-
-    Supports all three windowrule syntaxes that may appear in user configs:
-
-    - Modern v3 (Hyprland 0.53+, keyword ``windowrule``):
-      ``match:class ^kitty$``, ``match:title bar`` — explicit ``match:`` prefix,
-      key/value split on first space.
-    - Legacy v2 (keyword ``windowrulev2``): ``class:^kitty$``, ``title:bar`` —
-      key:value tokens without the ``match:`` prefix.
-    - Legacy v1 (keyword ``windowrule`` without ``match:`` tokens):
-      single bare token treated as a class regex.
-
-    Selection is by presence: if any token starts with ``match:``, the whole
-    list is parsed in v3 mode, otherwise we fall back to v2 (when the caller
-    flagged it) or v1.
-    """
-    match: dict[str, Any] = {}
-    if not parts:
-        return match
-
-    if any(p.startswith("match:") for p in parts):
-        for token in parts:
-            if not token.startswith("match:"):
-                continue
-            rest = token[len("match:") :]
-            key, _, value = rest.partition(" ")
-            match[key.strip()] = coerce_value(value.strip())
-        return match
-
-    # Legacy v1/v2 share the ``KEY:VALUE`` matcher syntax — try that first.
-    for token in parts:
-        key, sep, value = token.partition(":")
-        if sep:
-            match[key.strip()] = coerce_value(value.strip())
-    if match:
-        return match
-
-    # Truly legacy v1 (``windowrule = float, ^firefox$``) — a single bare
-    # regex matches the window class.
-    if not v2:
-        match["class"] = parts[0]
-    return match
-
-
-def _split_action_and_matchers(parts: list[str]) -> tuple[str, list[str]] | None:
-    """Find the action token and return it alongside the remaining matchers.
-
-    Both orders show up in real configs — effect-first (``stay_focused on,
-    match:title …``) and match-first (``match:title …, stay_focused on``).
-    We figure it out by the ``match:`` prefix: anything with it is a matcher,
-    the lone token without it is the action. Without any ``match:`` prefix
-    we fall back to legacy v1/v2 (first token is the action).
+    v3 bodies never reach here; :func:`split_rule_body` reads those.
     """
     if not parts:
-        return None
+        return []
+    pairs = [
+        (key.strip(), value.strip())
+        for key, sep, value in (token.partition(":") for token in parts)
+        if sep
+    ]
+    if pairs:
+        return pairs
+    return [] if v2 else [("class", parts[0])]
 
-    if any(p.startswith("match:") for p in parts):
-        action_tokens = [p for p in parts if not p.startswith("match:")]
-        matcher_tokens = [p for p in parts if p.startswith("match:")]
-        if not action_tokens:
-            return None
-        return action_tokens[0], matcher_tokens
 
-    return parts[0], parts[1:]
+def _effect_value_to_lua(name: str, args: str) -> Any:
+    """Coerce a Rule's stringly-typed effect args back to Lua-native form.
+
+    Bool effects come in as ``"on"`` / ``"off"`` from the Hyprlang side;
+    Lua wants ``true`` / ``false``. Numeric and string args route through
+    :func:`coerce_value` so quoted/escaped output matches what the user
+    would write by hand. Empty args on a known bool effect default to
+    ``true`` (Hyprland's "missing value" interpretation for these names).
+    """
+    stripped = args.strip()
+    if name in V3_BOOL_EFFECTS or name in LAYER_BOOL_EFFECTS:
+        if not stripped:
+            return True
+        parsed = parse_hyprlang_bool(stripped)
+        if parsed is not None:
+            return parsed
+    return coerce_value(stripped)
 
 
-def emit_windowrule(args: str, *, v2: bool) -> str:
+def render_rule_lua(rule: Rule) -> str:
+    """Render a structured :class:`Rule` as one ``hl.window_rule({…})``
+    / ``hl.layer_rule({…})`` call string.
+
+    Both rule kinds share the same table shape (``name``, ``enabled``,
+    ``match``, plus effect fields); only the wrapping function differs.
+    Used by the walker for full-document emission, by the single-line
+    emitters below, and by single-Rule consumers (e.g. hyprmod's
+    edit-dialog Lua preview) that need the same snippet without
+    standing up a Document.
+    """
+    table: dict[str, Any] = {}
+    if rule.name:
+        table["name"] = rule.name
+    if not rule.enabled:
+        table["enabled"] = False
+    if rule.matchers:
+        table["match"] = {k: coerce_value(v) for k, v in rule.matchers}
+    for name, args in rule.effects:
+        table[name] = _effect_value_to_lua(name, args)
+    fn = "hl.layer_rule" if rule.kind == "layerrule" else "hl.window_rule"
+    return f"{fn}({format_table(table, indent=0)})"
+
+
+def _legacy_rule_parts(parts: list[str]) -> tuple[list[tuple[str, str]], list[str]]:
+    """Split a pre-v3 rule body into ``(effects, matcher tokens)``.
+
+    The v1 and v2 grammars put a single effect first and the matchers
+    after it, so there is exactly one effect to find. v3 bodies don't
+    come through here: :func:`split_rule_body` reads those.
+    """
+    name, _, args = parts[0].partition(" ")
+    return [(name.strip(), args.strip())], parts[1:]
+
+
+def emit_windowrule(args: str, *, v2: bool) -> str | None:
     """Shared implementation for ``windowrule`` and ``windowrulev2``.
 
     Handles raw Hyprlang single-line input — ``windowrule = match:K V,
@@ -149,24 +144,37 @@ def emit_windowrule(args: str, *, v2: bool) -> str:
     single line) are normalised to :class:`Rule` nodes by
     :func:`hyprland_config.migrate` and emitted via the walker's
     structured-rule path; they never reach this single-line emitter.
+
+    Returns ``None`` for a body with no effect to apply, which Hyprland
+    rejects too. Callers surface that as an untranslatable line rather
+    than emitting Lua that silently does nothing.
     """
     # Bracket-aware split: regex matchers like ``class:^(foo|bar,baz)$`` carry
     # commas inside parens that a naive ``str.split(",")`` would mangle.
     parts = split_top_level(args)
-    split = _split_action_and_matchers(parts)
-    if split is None:
-        return f"-- malformed windowrule: {args}"
-    action_str, matcher_tokens = split
-    action_name, action_value = _parse_rule_action(action_str)
-    matchers = _parse_matchers(matcher_tokens, v2=v2)
-    table: dict[str, Any] = {}
-    if matchers:
-        table["match"] = matchers
-    table[action_name] = action_value
-    return f"hl.window_rule({format_table(table, indent=0)})"
+    if not parts:
+        return None
+
+    if any(p.startswith("match:") for p in parts):
+        matcher_pairs, effects = split_rule_body(args)
+    else:
+        effects, matcher_tokens = _legacy_rule_parts(parts)
+        matcher_pairs = _legacy_window_matchers(matcher_tokens, v2=v2)
+
+    if not effects:
+        return None
+    keyword = "windowrulev2" if v2 else "windowrule"
+    return render_rule_lua(
+        Rule(
+            raw=f"{keyword} = {args}",
+            kind="windowrule",
+            matchers=matcher_pairs,
+            effects=effects,
+        )
+    )
 
 
-def emit_layerrule(args: str) -> str:
+def emit_layerrule(args: str) -> str | None:
     """``layerrule = match:namespace REGEX, EFFECT VALUE`` → ``hl.layer_rule({...})``.
 
     Accepts both the modern ``match:namespace …, effect …`` form and the
@@ -177,25 +185,26 @@ def emit_layerrule(args: str) -> str:
     """
     # Bracket-aware split — see emit_windowrule for the regex-matcher case.
     parts = split_top_level(args)
-    split = _split_action_and_matchers(parts)
-    if split is None:
-        return f"-- malformed layerrule: {args}"
-    action_str, matcher_tokens = split
-    action_name, action_value = _parse_rule_action(action_str)
+    if not parts:
+        return None
 
-    if matcher_tokens and any(t.startswith("match:") for t in matcher_tokens):
-        matchers = _parse_matchers(matcher_tokens, v2=False)
-    elif matcher_tokens:
-        # Legacy: a single bare regex matches the layer namespace.
-        matchers = {"namespace": matcher_tokens[0]}
+    if any(p.startswith("match:") for p in parts):
+        matcher_pairs, effects = split_rule_body(args)
     else:
-        matchers = {}
+        effects, matcher_tokens = _legacy_rule_parts(parts)
+        # Legacy: a single bare regex matches the layer namespace.
+        matcher_pairs = [("namespace", matcher_tokens[0])] if matcher_tokens else []
 
-    table: dict[str, Any] = {}
-    if matchers:
-        table["match"] = matchers
-    table[action_name] = action_value
-    return f"hl.layer_rule({format_table(table, indent=0)})"
+    if not effects:
+        return None
+    return render_rule_lua(
+        Rule(
+            raw=f"layerrule = {args}",
+            kind="layerrule",
+            matchers=matcher_pairs,
+            effects=effects,
+        )
+    )
 
 
 def emit_workspace_rule(args: str) -> str:

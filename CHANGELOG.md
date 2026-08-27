@@ -5,6 +5,17 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.15] - 2026-08-27
+
+### Fixed
+
+- A single-line rule with more than one effect no longer loses every effect after the first. `windowrule = match:class ^(kitty)$, float on, opacity 0.8, size 800 600` emitted `hl.window_rule({ match = …, float = true })` and dropped the rest without a word, on both the live-apply path (`keyword_to_lua`) and the document path for rules that hadn't been through `normalize_rules`. `layerrule` had the same hole. https://github.com/BlueManCZ/hyprmod/issues/79
+- A rule body with no effect (`windowrule = match:class ^(kitty)$`) no longer emits `-- malformed windowrule: …`. A Lua comment evaluates cleanly, so a caller pushing it through `hyprctl eval` was told the rule applied when the compositor never received one. The emitters now return `None`, which `keyword_to_lua` raises as `ValueError` and the document walker lists in the manual-conversion block, matching how every other untranslatable line is handled.
+
+### Changed
+
+- The single-line rule emitters now build a `Rule` and hand it to `render_rule_lua`, the same renderer the document walker uses, instead of parsing the body a second way. The two paths had drifted (multi-effect support being the visible symptom), and a rule pushed live is now guaranteed to read identically to the one written to the config. `split_rule_body` moved to the shared core module so the normalisation pass and the emitters tokenise a body the same way.
+
 ## [0.9.14] - 2026-07-30
 
 ### Added
@@ -383,6 +394,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.15]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.15
 [0.9.14]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.14
 [0.9.13]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.13
 [0.9.12]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.12
