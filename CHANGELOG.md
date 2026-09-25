@@ -5,7 +5,7 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.18] - 2026-09-25
 
 ### Fixed
 
@@ -416,6 +416,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.18]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.18
 [0.9.17]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.17
 [0.9.16]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.16
 [0.9.15]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.15
