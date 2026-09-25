@@ -660,6 +660,27 @@ class TestErrors:
         with pytest.raises(LuaReaderError):
             load_lua(path)
 
+    def test_config_printing_does_not_break_the_read(self, tmp_path: Path) -> None:
+        # Records used to share stdout with the config, so one print landed
+        # between two of them and failed the JSON parse for the whole file.
+        src = 'print("hello from the config")\nhl.config({ general = { gaps_in = 5 } })\n'
+        doc = load_lua(_write_lua(tmp_path, src))
+        assert _assignments(doc) == {"general:gaps_in": "5"}
+
+    def test_output_of_a_spawned_command_is_ignored(self, tmp_path: Path) -> None:
+        # Same collision one level down: a config that starts something at
+        # load time hands that process our stdout too.
+        src = 'os.execute("echo started")\nhl.config({ general = { gaps_in = 5 } })\n'
+        doc = load_lua(_write_lua(tmp_path, src))
+        assert _assignments(doc) == {"general:gaps_in": "5"}
+
+    def test_config_exiting_early_is_reported(self, tmp_path: Path) -> None:
+        # No records get written, and an empty Document would read as a
+        # config with nothing in it, which a later save would make true.
+        path = _write_lua(tmp_path, "hl.config({ general = { gaps_in = 5 } })\nos.exit(0)\n")
+        with pytest.raises(LuaReaderError, match="produced no records"):
+            load_lua(path)
+
 
 class TestGroupAndPassDispatcherReads:
     """The Lua forms whose Hyprlang name is not a straight rename.

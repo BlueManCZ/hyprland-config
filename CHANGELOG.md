@@ -5,6 +5,13 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.17] - 2026-09-25
+
+### Fixed
+
+- A Lua config that prints no longer fails to load. The wrapper serialised its records to stdout, the same stream the config writes to, so one `print` (or a line from a command the config starts at load time) landed between two records and failed the JSON parse for the whole file, taking down every consumer that reads the config at startup. Records now go to a file the Python side names, and the wrapper's stdout is discarded. https://github.com/BlueManCZ/hyprmod/issues/87
+- A config that calls `os.exit()` is reported instead of read as empty. No records reach the reader in that case, and the resulting empty `Document` looked like a config with nothing in it, which the next `save()` would have made true.
+
 ## [0.9.16] - 2026-08-27
 
 ### Fixed
@@ -403,6 +410,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.17]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.17
 [0.9.16]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.16
 [0.9.15]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.15
 [0.9.14]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.14

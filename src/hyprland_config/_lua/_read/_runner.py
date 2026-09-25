@@ -1,7 +1,7 @@
 """Public entry: load a Hyprland Lua config file into a :class:`Document`.
 
 Drives the Lua wrapper script (``_wrapper.lua``) via subprocess, parses
-its JSON record stream, and feeds the records to
+the JSON records it writes, and feeds them to
 :func:`._records.records_to_document`.
 
 The only runtime requirement is a ``lua`` binary on ``PATH``. Any
@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -81,7 +82,7 @@ def load_lua(path: str | Path) -> Document:
 
 
 def _run_wrapper(path: Path) -> list[dict[str, Any]]:
-    """Invoke the Lua wrapper and parse its stdout into records."""
+    """Invoke the Lua wrapper and parse the records it writes."""
     lua = _find_lua()
     if lua is None:
         raise LuaReaderError(
@@ -90,26 +91,41 @@ def _run_wrapper(path: Path) -> list[dict[str, Any]]:
             "(usually `lua` or `lua5.4`) and try again."
         )
 
-    try:
-        result = subprocess.run(
-            [lua, str(_WRAPPER_SCRIPT), str(path)],
-            capture_output=True,
-            text=True,
-            timeout=_LUA_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise LuaReaderError(
-            f"reading {path} timed out after {_LUA_TIMEOUT_SECONDS}s — "
-            "check for infinite loops in the config."
-        ) from exc
+    # The wrapper writes records to a file of our choosing and we throw its
+    # stdout away: the user's config owns stdout, and anything it prints
+    # there (directly, or from a command it starts) used to be read back as
+    # a record and fail the JSON parse.
+    with tempfile.TemporaryDirectory(prefix="hyprland-config-") as tmpdir:
+        records_path = Path(tmpdir) / "records.jsonl"
+        try:
+            result = subprocess.run(
+                [lua, str(_WRAPPER_SCRIPT), str(path), str(records_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=_LUA_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise LuaReaderError(
+                f"reading {path} timed out after {_LUA_TIMEOUT_SECONDS}s — "
+                "check for infinite loops in the config."
+            ) from exc
 
-    if result.returncode != 0:
-        raise LuaReaderError(
-            f"lua failed to load {path}: {result.stderr.strip() or 'unknown error'}"
-        )
+        if result.returncode != 0:
+            raise LuaReaderError(
+                f"lua failed to load {path}: {result.stderr.strip() or 'unknown error'}"
+            )
+
+        try:
+            output = records_path.read_text()
+        except OSError as exc:
+            raise LuaReaderError(
+                f"reading {path} produced no records: the config ended the process "
+                "before they could be written (an `os.exit()` in the config does this)."
+            ) from exc
 
     records: list[dict[str, Any]] = []
-    for line in result.stdout.splitlines():
+    for line in output.splitlines():
         if not line.strip():
             continue
         try:
