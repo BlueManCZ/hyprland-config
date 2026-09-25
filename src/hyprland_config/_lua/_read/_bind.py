@@ -9,7 +9,7 @@ of which side wrote the file.
 
 from typing import Any
 
-from hyprland_config._core._bind import BIND_FLAG_MAP
+from hyprland_config._core._bind import BIND_FLAG_MAP, has_description_flag
 from hyprland_config._lua._read._dispatchers import dispatcher_to_hyprlang
 
 # Lua flag fields (third arg to hl.bind) → Hyprlang bind-keyword suffix
@@ -42,7 +42,7 @@ def bind_value(args: list[Any]) -> tuple[str, str] | None:
 
     # ``bindd`` carries the description as the third comma-separated field,
     # before the dispatcher; other variants put the dispatcher third.
-    if description is not None:
+    if has_description_flag(bind_type):
         parts = [" ".join(mods), key, description, dispatcher_str]
     else:
         parts = [" ".join(mods), key, dispatcher_str]
@@ -53,14 +53,16 @@ def bind_value(args: list[Any]) -> tuple[str, str] | None:
     return bind_type, value
 
 
-def _classify_bind(flags: dict[str, Any]) -> tuple[str, str | None]:
+def _classify_bind(flags: dict[str, Any]) -> tuple[str, str]:
     """Pick the right ``bind`` variant ('bind' / 'binde' / 'bindml' / …)."""
-    description = flags.get("description") if isinstance(flags.get("description"), str) else None
+    description_value = flags.get("description")
+    has_description = isinstance(description_value, str)
+    description = description_value if has_description else ""
     suffix_chars: list[str] = []
     for flag, suffix in _FLAG_TO_SUFFIX.items():
         if flags.get(flag):
             suffix_chars.append(suffix)
-    if description is not None:
+    if has_description:
         suffix_chars.append("d")
     suffix_chars.sort()
     return "bind" + "".join(suffix_chars), description
