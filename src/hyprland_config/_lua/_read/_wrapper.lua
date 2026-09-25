@@ -1,8 +1,12 @@
 -- Record every hl.* call made by a Hyprland Lua config file.
 --
 -- Driver: hyprland_config._lua_reader._runner. The Python side invokes this
--- script as `lua _wrapper.lua <user_config_path>` and reads recorded calls
--- as one JSON object per stdout line.
+-- script as `lua _wrapper.lua <user_config_path> <records_path>` and reads
+-- recorded calls as one JSON object per line of the records file.
+--
+-- The records go to a file rather than stdout because stdout belongs to the
+-- user's config: a `print` in it, or anything a command it spawns writes,
+-- would otherwise land between two records and break the JSON framing.
 --
 -- We deliberately don't try to evaluate or replay any side effects — the
 -- only purpose is to surface the static-after-evaluation structure of a
@@ -331,8 +335,9 @@ end
 -- ----------------------------------------------------------------------
 
 local user_file = arg[1]
-if not user_file then
-    io.stderr:write("usage: lua _wrapper.lua <config_path>\n")
+local records_file = arg[2]
+if not user_file or not records_file then
+    io.stderr:write("usage: lua _wrapper.lua <config_path> <records_path>\n")
     os.exit(2)
 end
 
@@ -349,6 +354,12 @@ if not ok then
     record("__error", tostring(perr))
 end
 
-for _, r in ipairs(records) do
-    print(encode(r))
+local out, out_err = io.open(records_file, "w")
+if not out then
+    io.stderr:write("cannot write records to " .. records_file .. ": " .. tostring(out_err) .. "\n")
+    os.exit(1)
 end
+for _, r in ipairs(records) do
+    out:write(encode(r), "\n")
+end
+out:close()

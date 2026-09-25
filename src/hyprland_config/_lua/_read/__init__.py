@@ -17,7 +17,9 @@ Lua interpret the file, with a wrapper script (``_wrapper.lua``) that:
   arguments rather than mutating compositor state.
 - Replaces ``dofile`` so nested sub-files are recorded with their
   correct origin path.
-- Serialises the recorded calls as one JSON object per stdout line.
+- Serialises the recorded calls as one JSON object per line, into a
+  file the Python side names (stdout stays the user config's to print
+  to).
 
 The Python side drives the wrapper through ``subprocess``, parses the
 records, and synthesises ``Assignment`` and ``Keyword`` nodes that
