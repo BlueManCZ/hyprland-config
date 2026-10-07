@@ -18,7 +18,7 @@ from hyprland_config._lua._emit._dispatchers import (
 )
 from hyprland_config._lua._emit._format import (
     INDENT,
-    coerce_value,
+    coerce_option_value,
     format_table,
     quote_string,
     set_nested,
@@ -104,7 +104,7 @@ def emit_option_assignment(full_key: str, value: str) -> str:
     Hyprland's Lua config layout.
     """
     tree: dict[str, Any] = {}
-    set_nested(tree, split_key(full_key), coerce_value(value))
+    set_nested(tree, split_key(full_key), coerce_option_value(full_key, value))
     return f"hl.config({format_table(tree, indent=0)})"
 
 

@@ -64,6 +64,7 @@ from hyprland_config._lua._emit._conditional import translate_expression
 from hyprland_config._lua._emit._dispatchers import translate_dispatcher
 from hyprland_config._lua._emit._format import (
     INDENT,
+    coerce_option_value,
     coerce_value,
     emit_exec_cmd_call,
     emit_keyword_config_call,
@@ -723,7 +724,7 @@ def _process_line(line: Line, state: _EmitState) -> None:
         if state.section_stack:
             cur_name, cur_buf = state.section_stack[-1]
             if cur_name == "device" and cur_buf is not None:
-                cur_buf[line.key] = coerce_value(value)
+                cur_buf[line.key] = coerce_option_value(line.full_key, value)
                 return
             if cur_name == "match" and cur_buf is not None:
                 # Field of a nested ``match { … }`` block — the ``match:``
@@ -733,7 +734,11 @@ def _process_line(line: Line, state: _EmitState) -> None:
             if cur_name in _BLOCK_RULE_SECTIONS and cur_buf is not None:
                 add_block_rule_field(cur_buf, line.key, value)
                 return
-        set_nested(state.current.config_tree, split_key(line.full_key), coerce_value(value))
+        set_nested(
+            state.current.config_tree,
+            split_key(line.full_key),
+            coerce_option_value(line.full_key, value),
+        )
         return
 
     if isinstance(line, Keyword):

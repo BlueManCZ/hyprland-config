@@ -3,7 +3,7 @@
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from hyprland_config import Document, load, parse_string, serialize_lua
+from hyprland_config import Document, keyword_to_lua, load, parse_string, serialize_lua
 from hyprland_config._lua import serialize_lua_tree
 from tests._lua_helpers import assert_lua_compiles, requires_lua
 
@@ -348,6 +348,60 @@ class TestValueCoercion:
         out = serialize_lua(parse_string("general:col.active_border = 0xffed333b 0deg\n"))
         assert 'active_border = "0xffed333b",' in out
         assert "0deg" not in out
+
+
+class TestStringTypedOptions:
+    """An option Hyprland types as a string never coerces to a bool.
+
+    Hyprlang's boolean words include ``no``, ``on`` and ``off``, which are
+    also legitimate values of string options — ``input:kb_layout = no`` is
+    the Norwegian layout. Hyprland's Lua API is strictly typed and answers a
+    boolean there with "string type requires a string", so inferring the
+    type from the value's shape alone corrupts the line (hyprmod issue 96).
+    """
+
+    def test_norwegian_keyboard_layout_stays_a_string(self) -> None:
+        out = serialize_lua(parse_string("input:kb_layout = no\n"))
+        assert 'kb_layout = "no",' in out
+
+    def test_layout_list_led_by_a_bool_word(self) -> None:
+        # The lenient bool match anchors at the start of the value and a
+        # comma is a word boundary, so the whole list collapsed to ``false``
+        # while ``us,no`` survived by luck.
+        assert 'kb_layout = "no,us",' in serialize_lua(parse_string("input:kb_layout = no,us\n"))
+        assert 'kb_layout = "us,no",' in serialize_lua(parse_string("input:kb_layout = us,no\n"))
+
+    def test_regex_starting_with_a_bool_word(self) -> None:
+        out = serialize_lua(parse_string("misc:swallow_regex = no.*\n"))
+        assert 'swallow_regex = "no.*",' in out
+
+    def test_device_block_field_borrows_the_input_option_type(self) -> None:
+        # A ``device { … }`` block overrides the matching ``input:`` option,
+        # so its ``kb_layout`` is the same string-typed key under another
+        # name.
+        out = serialize_lua(parse_string("device {\n    name = my-kbd\n    kb_layout = no\n}\n"))
+        assert 'kb_layout = "no",' in out
+
+    def test_bool_option_still_coerces_its_hyprlang_aliases(self) -> None:
+        # The suppression is keyed on the option, not the value: a real
+        # boolean option keeps every Hyprlang spelling.
+        out = serialize_lua(parse_string("general:resize_on_border = no\n"))
+        assert "resize_on_border = false," in out
+
+    def test_numeric_string_option_stays_a_string(self) -> None:
+        # ``general:locale`` is string-typed, so a value that happens to
+        # look like a number must not emit as one either.
+        assert 'locale = "7",' in serialize_lua(parse_string("general:locale = 7\n"))
+
+    def test_unknown_option_still_infers_from_the_value(self) -> None:
+        # Options outside the schema (a plugin's, or a typo) have no type to
+        # honour, so shape inference stays the fallback.
+        assert "x = false," in serialize_lua(parse_string("general:x = no\n"))
+
+    def test_live_apply_matches_the_written_value(self) -> None:
+        # The two ways the value reaches Hyprland — pushed through
+        # ``hyprctl eval`` and written to the config — have to agree.
+        assert 'kb_layout = "no",' in keyword_to_lua("input:kb_layout", "no")
 
 
 class TestKeyFormatting:

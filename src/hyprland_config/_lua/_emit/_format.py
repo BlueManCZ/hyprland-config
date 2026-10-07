@@ -13,7 +13,12 @@ from typing import Any
 
 from hyprland_config._core._expr import substitute_variables_with_markers
 from hyprland_config._core._types import Color, Gradient
-from hyprland_config._core._values import FLOAT_LITERAL_RE, INT_LITERAL_RE, parse_hyprlang_bool
+from hyprland_config._core._values import (
+    FLOAT_LITERAL_RE,
+    INT_LITERAL_RE,
+    option_type,
+    parse_hyprlang_bool,
+)
 
 INDENT = "    "
 
@@ -247,6 +252,22 @@ def coerce_value(s: str) -> Any:
     if bare_color is not None:
         return bare_color
     return s
+
+
+def coerce_option_value(full_key: str, value: str) -> Any:
+    """Coerce an option assignment's value, honouring the option's own type.
+
+    :func:`coerce_value` reads the value's shape, which is all Hyprlang text
+    offers on its own. That is wrong for a string-typed option, where a
+    value shaped like a Hyprlang boolean really is a string — the Norwegian
+    keyboard layout is spelled ``no``, and Hyprland's Lua API answers a
+    boolean there with "string type requires a string". A ``$var``
+    reference still takes the shape path, which turns the marker into the
+    ``LuaExpr`` the assembled output needs.
+    """
+    if option_type(full_key) == "string" and not has_var_marker(value):
+        return value
+    return coerce_value(value)
 
 
 def _try_gradient(value: str) -> dict[str, Any] | None:
@@ -513,7 +534,7 @@ def emit_keyword_config_call(full_key: str, value: str, *, indent: int) -> str:
     depth so the multi-line output drops in cleanly at the call site.
     """
     tree: dict[str, Any] = {}
-    set_nested(tree, split_key(full_key), coerce_value(value))
+    set_nested(tree, split_key(full_key), coerce_option_value(full_key, value))
     return f"hl.config({format_table(tree, indent=indent)})"
 
 
