@@ -2,6 +2,8 @@
 
 import re
 
+import hyprland_schema
+
 # Hyprland's Hyprlang parser accepts these (case-insensitive) for boolean
 # fields. Single source of truth for the whole library — every code path
 # that needs to coerce a string to a bool should route through
@@ -14,6 +16,27 @@ HYPRLANG_FALSE_WORDS: frozenset[str] = frozenset({"false", "no", "off", "0"})
 # agree on what counts as a number.
 INT_LITERAL_RE = re.compile(r"^-?\d+$")
 FLOAT_LITERAL_RE = re.compile(r"^-?\d+\.\d+$")
+
+
+def option_type(full_key: str) -> str | None:
+    """Return the type Hyprland gives the option *full_key*.
+
+    ``None`` for a key the schema doesn't carry: a plugin's option, a typo,
+    or one newer than the installed hyprland-schema. Callers that need a
+    type fall back to reading the value's shape.
+
+    Resolved against the bundled schema, i.e. the newest Hyprland the
+    installed hyprland-schema knows. Option types do change between
+    releases — ``general:gaps_in`` was a string before 0.55 — so a consumer
+    targeting an older compositor wants its hyprland-schema pinned to match.
+
+    A ``device { … }`` block's fields override the matching ``input:``
+    option, so ``device:kb_layout`` resolves as ``input:kb_layout``.
+    """
+    if full_key.startswith("device:"):
+        full_key = f"input:{full_key.removeprefix('device:')}"
+    opt = hyprland_schema.OPTIONS_BY_KEY.get(full_key)
+    return opt.type if opt is not None else None
 
 
 def parse_hyprlang_bool(value: object) -> bool | None:

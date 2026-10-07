@@ -5,6 +5,18 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.19] - 2026-10-07
+
+### Fixed
+
+- A string-typed option no longer emits as a Lua boolean. The emitter inferred each value's type from its shape, and the Hyprlang boolean words include `no`, `on` and `off` — so `input:kb_layout = no`, the Norwegian layout, became `kb_layout = false` and Hyprland rejected it with `string type requires a string`. Option assignments now take their type from the schema, on every path that emits one: `keyword_to_lua`, the document walker, and the Hyprlang-to-Lua conversion. A `device { … }` block's fields resolve as the `input:` option they override. https://github.com/BlueManCZ/hyprmod/issues/96
+  - `save()` re-serializes the whole Lua document, so this also rewrote values no caller had touched: an existing `kb_layout = "no"` became `false` after an edit to any unrelated key.
+  - A value reaching a string option through a `$variable` is still typed from its shape; the declaration carries no type of its own.
+
+### Changed
+
+- `hyprland-schema` is now a runtime dependency, for those option types. Pin it to match the compositor when targeting an older Hyprland, since option types change between releases.
+
 ## [0.9.18] - 2026-09-30
 
 ### Fixed
@@ -416,6 +428,7 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.19]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.19
 [0.9.18]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.18
 [0.9.17]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.17
 [0.9.16]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.16

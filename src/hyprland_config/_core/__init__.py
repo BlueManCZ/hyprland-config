@@ -56,6 +56,7 @@ from hyprland_config._core._types import (
 )
 from hyprland_config._core._values import (
     coerce_config_value,
+    option_type,
     parse_hyprlang_bool,
     value_to_conf,
 )
@@ -101,6 +102,7 @@ __all__ = [
     "expand_value",
     "get_styles_for",
     "normalize_gradient_string",
+    "option_type",
     "parse_hyprlang_bool",
     "parse_version",
     "split_top_level",

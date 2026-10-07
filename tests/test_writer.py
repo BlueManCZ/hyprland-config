@@ -107,6 +107,25 @@ class TestSaveFormat:
 
         assert (tmp_path / "converted.conf").read_text() == "general:border_size = 10\n"
 
+    def test_unrelated_save_keeps_a_string_typed_value(self, tmp_path):
+        # The whole Lua document is re-serialized on save, so a value the
+        # caller never touched still passes through the emitter. A Norwegian
+        # ``kb_layout`` used to come out as ``false``, leaving the user with
+        # a config Hyprland rejects after an edit to an unrelated key
+        # (hyprmod issue 96).
+        entry = tmp_path / "hyprland.lua"
+        entry.write_text(
+            'hl.config({ input = { kb_layout = "no" }, general = { border_size = 3 } })\n'
+        )
+
+        doc = load_any(entry)
+        doc.set("general:border_size", 10)
+        doc.save()
+
+        text = entry.read_text()
+        assert 'kb_layout = "no",' in text
+        assert "border_size = 10," in text
+
     def test_sourced_lua_files_stay_split(self, tmp_path):
         (tmp_path / "general.lua").write_text("hl.config({ general = { gaps_in = 5 } })\n")
         entry = tmp_path / "hyprland.lua"
