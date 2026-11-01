@@ -69,6 +69,11 @@ def records_to_document(
             if len(stack) > 1:
                 stack.pop()
             continue
+        if call == "__error":
+            # Non-fatal: the wrapper caught a failing callback or module
+            # load. Keep the rest of the document and let the caller warn.
+            root.read_warnings.append(str(args[0]) if args else "unknown Lua error")
+            continue
         if call.startswith(_WRAPPER_INTERNAL_PREFIX):
             # Wrapper-internal error markers — already on stderr.
             continue

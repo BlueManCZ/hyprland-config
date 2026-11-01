@@ -185,8 +185,17 @@ end
 -- their autostart commands per the example config. ``current_event``
 -- tells the recorded call which event it belongs to so the Python side
 -- can route it back to ``exec`` / ``exec-shutdown``.
+-- Runtime events fire while Hyprland is running, not while its config is
+-- loaded. Executing them here would run user side effects (minimising
+-- windows, reloading configs) during a read-only parse; skip them.
+local _runtime_events = {
+    ["config.unload"] = true,
+    ["window.minimize"] = true,
+    ["window.update_state"] = true,
+}
+
 hl.on = function(event, callback)
-    if type(callback) == "function" then
+    if type(callback) == "function" and not _runtime_events[event] then
         local prev = current_event
         current_event = event
         local ok, err = pcall(callback)
@@ -201,6 +210,15 @@ end
 -- side can route it to the right Hyprlang keyword.
 hl.exec_cmd = function(cmd, rules) record("exec_cmd", cmd, current_event) end
 hl.dispatch = function(d) record("dispatch_immediate", d) end
+
+-- Hyprland 0.57 query helpers. Configs commonly loop over these at load
+-- time (e.g. to build per-output rules); returning an empty table keeps the
+-- read going instead of erroring on ipairs(nil).
+hl.get_devices = function() return {} end
+hl.get_monitors = function() return {} end
+hl.get_workspaces = function() return {} end
+hl.get_windows = function() return {} end
+hl.reload_config = function() end
 
 -- Things we explicitly ignore (timers, version checks, etc.) — they
 -- have no on-disk-config equivalent. Reading them would just add noise.

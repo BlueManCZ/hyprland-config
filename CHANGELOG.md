@@ -5,6 +5,17 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `Document.read_warnings` reports non-fatal Lua evaluation failures (a callback or module that raised) instead of dropping them. The rest of the document is still read.
+
+### Fixed
+
+- Reading a Hyprland 0.57 config no longer aborts when it queries live state while loading. `hl.get_devices()`, `hl.get_monitors()`, `hl.get_workspaces()` and `hl.get_windows()` return empty tables, and `hl.reload_config()` is a no-op.
+- Runtime event callbacks (`config.unload`, `window.minimize`, `window.update_state`) are not executed while reading a config. Startup/shutdown callbacks still run so their `exec-once`/`exec-shutdown` commands are recorded.
+
 ## [0.9.19] - 2026-10-07
 
 ### Fixed
