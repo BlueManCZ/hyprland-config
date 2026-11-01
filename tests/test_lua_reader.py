@@ -59,6 +59,36 @@ def _rules(doc, kind: str):
     return [ln for _doc, ln in doc.iter_lines() if isinstance(ln, Rule) and ln.kind == kind]
 
 
+class TestHyprland057Apis:
+    def test_devices_loop_does_not_truncate_the_document(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            """
+            hl.config({ general = { gaps_in = 4 } })
+            for _, device in ipairs(hl.get_devices()) do
+                if device.name == "tablet" then
+                    hl.config({ input = { tablet = { enabled = true } } })
+                end
+            end
+            hl.reload_config()
+            hl.config({ general = { gaps_in = 6 } })
+            """,
+        )
+        assert _assignments(load_lua(path))["general:gaps_in"] == "6"
+
+    def test_runtime_event_callbacks_are_not_executed(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            """
+            hl.on("window.minimize", function()
+                hl.config({ general = { gaps_in = 99 } })
+            end)
+            hl.config({ general = { gaps_in = 4 } })
+            """,
+        )
+        assert _assignments(load_lua(path))["general:gaps_in"] == "4"
+
+
 class TestConfigOptions:
     def test_top_level_option(self, tmp_path: Path) -> None:
         path = _write_lua(tmp_path, "hl.config({ general = { gaps_in = 5 } })\n")

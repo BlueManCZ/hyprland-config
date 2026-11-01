@@ -5,6 +5,18 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.20] - 2026-11-01
+
+### Added
+
+- **Hyprland 0.57 rule effects** — `no_glow`, `no_wobble`, and `no_xdg_drags` are recognised as boolean window-rule effects, so Hyprlang emits the required `on` and Lua emits `true` instead of an invalid empty string
+- **Hyprland 0.57 Lua query APIs are readable** — the reader now stubs `hl.get_devices()`, `hl.get_monitors()`, `hl.get_workspaces()`, `hl.get_windows()`, `hl.get_layers()`, `hl.get_workspace_windows()`, the active/last window and workspace getters, `hl.get_cursor_pos()`, and `hl.reload_config()`. A config that loops over `hl.get_devices()` no longer aborts halfway through and silently drops the rest of the file
+- Runtime-only `hl.on` callbacks (`window.*`, `config.unload`, and other non-startup events) are no longer executed while reading a config; only `hyprland.start` and `hyprland.shutdown` can contribute autostart commands
+
+### Changed
+
+- Tested with the Hyprland 0.57 option catalog from `hyprland-schema` 0.7.3; the runtime floor stays at 0.7.1 because parsing does not depend on the catalog
+
 ## [0.9.19] - 2026-10-07
 
 ### Fixed
