@@ -152,12 +152,12 @@ class TestHyprland057BoolEffects:
     """0.57 added boolean window-rule effects; both emitters must fill a value."""
 
     def test_hyprlang_fills_on(self):
-        for effect in ("no_glow", "no_wobble", "no_xdg_drags"):
+        for effect in ("no_glow", "no_wobble", "no_xdg_drags", "no_auto_hdr", "confine_pointer"):
             rule = _window([("class", "kitty")], [(effect, "")])
             assert render_rule_hyprlang(rule) == f"windowrule = match:class kitty, {effect} on\n"
 
     def test_lua_emits_true(self):
-        for effect in ("no_glow", "no_wobble", "no_xdg_drags"):
+        for effect in ("no_glow", "no_wobble", "no_xdg_drags", "no_auto_hdr", "confine_pointer"):
             rule = _window([("class", "kitty")], [(effect, "")])
             assert f"{effect} = true" in render_rule_lua(rule)
 

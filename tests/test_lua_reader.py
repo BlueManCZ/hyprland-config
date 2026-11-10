@@ -70,7 +70,9 @@ class TestHyprland057Apis:
                     hl.config({ input = { tablet = { enabled = true } } })
                 end
             end
-            hl.reload_config()
+            for _, plugin in ipairs(hl.get_loaded_plugins()) do
+                hl.config({ general = { gaps_in = 99 } })
+            end
             hl.config({ general = { gaps_in = 6 } })
             """,
         )

@@ -24,7 +24,8 @@ V3_BOOL_EFFECTS: frozenset[str] = frozenset(
         "keep_aspect_ratio", "nearest_neighbor",
         "no_anim", "no_blur", "no_dim", "no_focus", "no_follow_mouse",
         "no_shadow", "no_shortcuts_inhibit", "no_screen_share", "no_vrr",
-        "no_glow", "no_wobble", "no_xdg_drags",
+        "no_glow", "no_wobble", "no_xdg_drags", "no_auto_hdr",
+        "confine_pointer",
         "opaque", "force_rgbx", "sync_fullscreen", "immediate", "xray",
         "render_unfocused",
     }

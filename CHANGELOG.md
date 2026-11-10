@@ -5,17 +5,13 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.20] - 2026-11-01
+## [0.9.20] - 2026-11-10
 
-### Added
+### Fixed
 
-- **Hyprland 0.57 rule effects** — `no_glow`, `no_wobble`, and `no_xdg_drags` are recognised as boolean window-rule effects, so Hyprlang emits the required `on` and Lua emits `true` instead of an invalid empty string
-- **Hyprland 0.57 Lua query APIs are readable** — the reader now stubs `hl.get_devices()`, `hl.get_monitors()`, `hl.get_workspaces()`, `hl.get_windows()`, `hl.get_layers()`, `hl.get_workspace_windows()`, the active/last window and workspace getters, `hl.get_cursor_pos()`, and `hl.reload_config()`. A config that loops over `hl.get_devices()` no longer aborts halfway through and silently drops the rest of the file
-- Runtime-only `hl.on` callbacks (`window.*`, `config.unload`, and other non-startup events) are no longer executed while reading a config; only `hyprland.start` and `hyprland.shutdown` can contribute autostart commands
-
-### Changed
-
-- Tested with the Hyprland 0.57 option catalog from `hyprland-schema` 0.7.3; the runtime floor stays at 0.7.1 because parsing does not depend on the catalog
+- A Lua config that iterates a query result no longer loses everything after the loop. The reader stubbed unknown `hl.*` calls to return `nil`, so `ipairs(hl.get_devices())` raised and the rest of the file was dropped. The list getters (`hl.get_devices()`, `hl.get_monitors()`, `hl.get_windows()`, `hl.get_loaded_plugins()`, …) now return empty lists.
+- Runtime `hl.on` callbacks (`window.open`, `config.reloaded`, …) are no longer run while reading. An `hl.config` inside one overwrote the static value, and an `hl.exec_cmd` became an `exec` line. Only `hyprland.start` and `hyprland.shutdown` callbacks are read.
+- The Hyprland 0.57 boolean window-rule effects `no_glow`, `no_wobble`, `no_xdg_drags`, `no_auto_hdr` and `confine_pointer` get a value when emitted (`on` in Hyprlang, `true` in Lua). An empty value was rejected.
 
 ## [0.9.19] - 2026-10-07
 

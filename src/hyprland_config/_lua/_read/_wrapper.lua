@@ -180,10 +180,13 @@ hl.define_submap = function(name, reset_or_fn, fn)
     end
 end
 
--- hl.on registers an event handler. Only startup/shutdown callbacks can
--- contribute on-disk config (autostart commands), so execute those. All
--- other events are runtime-only: executing them during a read would need
--- real windows/monitors and can abort the rest of the file.
+-- hl.on registers an event handler. We execute startup/shutdown callbacks
+-- so any ``hl.exec_cmd`` calls inside get recorded — that's where users
+-- put their autostart commands per the example config. ``current_event``
+-- tells the recorded call which event it belongs to so the Python side
+-- can route it back to ``exec-once`` / ``exec-shutdown``. Every other
+-- event fires at runtime only; recording its callback would turn an
+-- ``hl.config`` in a ``window.open`` handler into a static assignment.
 local _EXEC_EVENTS = {
     ["hyprland.start"] = true,
     ["hyprland.shutdown"] = true,
@@ -211,32 +214,22 @@ hl.dispatch = function(d) record("dispatch_immediate", d) end
 hl.timer = function() end
 hl.version = function() return "0.0.0" end
 hl.print = print
-hl.reload_config = function() end
 
--- Query APIs added over 0.55-0.57. Returning an empty table keeps
--- ``for _, x in ipairs(hl.get_devices()) do`` configs readable without
--- inventing runtime state the reader cannot know.
+-- Query APIs whose result a config may iterate or index. The catch-all
+-- shim below returns nil, which turns ``ipairs(hl.get_devices())`` into an
+-- error that aborts the rest of the file. Empty results keep those configs
+-- readable without inventing runtime state the reader cannot know; getters
+-- for a single object (``hl.get_active_window()`` …) can stay on the shim,
+-- since nil is also what Hyprland returns when there is none.
 hl.get_devices = function() return {} end
 hl.get_monitors = function() return {} end
 hl.get_workspaces = function() return {} end
 hl.get_windows = function() return {} end
 hl.get_layers = function() return {} end
 hl.get_workspace_windows = function() return {} end
+hl.get_loaded_plugins = function() return {} end
 hl.get_cursor_pos = function() return { x = 0, y = 0 } end
 hl.get_current_submap = function() return "" end
-
-hl.get_active_window = function() return nil end
-hl.get_last_window = function() return nil end
-hl.get_urgent_window = function() return nil end
-hl.get_window = function() return nil end
-hl.get_active_workspace = function() return nil end
-hl.get_last_workspace = function() return nil end
-hl.get_workspace = function() return nil end
-hl.get_monitor = function() return nil end
-hl.get_monitor_at = function() return nil end
-hl.get_monitor_at_cursor = function() return nil end
-hl.get_active_monitor = function() return nil end
-hl.get_active_special_workspace = function() return nil end
 
 -- Anything else under hl gets a no-op shim so unknown future APIs don't
 -- blow up the reader.
