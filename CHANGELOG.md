@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Document.read_warnings` reports non-fatal Lua evaluation failures (a callback or module that raised) instead of dropping them. The rest of the document is still read.
+- `Document.read_warnings` lists the errors a Lua config raised while being read. The reader catches them and returns what ran, so an error at the top level of a file used to leave a silently truncated document — and a later `save()` of that file would drop the rest from disk.
+
+## [0.9.20] - 2026-11-10
 
 ### Fixed
 
-- Reading a Hyprland 0.57 config no longer aborts when it queries live state while loading. `hl.get_devices()`, `hl.get_monitors()`, `hl.get_workspaces()` and `hl.get_windows()` return empty tables, and `hl.reload_config()` is a no-op.
-- Runtime event callbacks (`config.unload`, `window.minimize`, `window.update_state`) are not executed while reading a config. Startup/shutdown callbacks still run so their `exec-once`/`exec-shutdown` commands are recorded.
+- A Lua config that iterates a query result no longer loses everything after the loop. The reader stubbed unknown `hl.*` calls to return `nil`, so `ipairs(hl.get_devices())` raised and the rest of the file was dropped. The list getters (`hl.get_devices()`, `hl.get_monitors()`, `hl.get_windows()`, `hl.get_loaded_plugins()`, …) now return empty lists.
+- Runtime `hl.on` callbacks (`window.open`, `config.reloaded`, …) are no longer run while reading. An `hl.config` inside one overwrote the static value, and an `hl.exec_cmd` became an `exec` line. Only `hyprland.start` and `hyprland.shutdown` callbacks are read.
+- The Hyprland 0.57 boolean window-rule effects `no_glow`, `no_wobble`, `no_xdg_drags`, `no_auto_hdr` and `confine_pointer` get a value when emitted (`on` in Hyprlang, `true` in Lua). An empty value was rejected.
 
 ## [0.9.19] - 2026-10-07
 
