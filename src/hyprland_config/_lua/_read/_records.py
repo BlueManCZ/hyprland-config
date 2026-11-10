@@ -34,6 +34,7 @@ RecordHandler = Callable[[Document, list[Any], str], None]
 # with that file — see the "dofile recursion" comment block there.
 _DOFILE_ENTER = "__dofile_enter"
 _DOFILE_EXIT = "__dofile_exit"
+_ERROR = "__error"
 _WRAPPER_INTERNAL_PREFIX = "__"
 
 
@@ -69,8 +70,16 @@ def records_to_document(
             if len(stack) > 1:
                 stack.pop()
             continue
+        if call == _ERROR:
+            # The wrapper caught an error and kept going: a failed callback
+            # loses only its own calls, but one at the top level of a file
+            # or in a dofile/require cuts that file short. The document is
+            # still returned, so the caller has to see that it is partial —
+            # ``save()`` rewrites a dirty Lua file from the document alone.
+            root.read_warnings.append(str(args[0]) if args else "unknown Lua error")
+            continue
         if call.startswith(_WRAPPER_INTERNAL_PREFIX):
-            # Wrapper-internal error markers — already on stderr.
+            # Any other wrapper marker carries no config.
             continue
 
         handler = _RECORD_HANDLERS.get(call)

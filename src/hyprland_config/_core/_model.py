@@ -222,6 +222,10 @@ class Document:
         # config is indistinguishable from a Hyprlang one without this —
         # and :meth:`save` would write ``.conf`` syntax into ``hyprland.lua``.
         self.lua: bool = lua
+        # Non-fatal problems hit while evaluating a Lua config: callbacks
+        # that raised, modules that failed to load. The document is still
+        # usable, but callers should surface that the read was partial.
+        self.read_warnings: list[str] = []
 
     @property
     def errors(self) -> list[ErrorLine]:

@@ -5,6 +5,12 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `Document.read_warnings` lists the errors a Lua config raised while being read. The reader catches them and returns what ran, so an error at the top level of a file used to leave a silently truncated document — and a later `save()` of that file would drop the rest from disk.
+
 ## [0.9.20] - 2026-11-10
 
 ### Fixed

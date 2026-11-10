@@ -671,6 +671,24 @@ class TestErrors:
         src = 'require("missing_module")\nhl.config({ general = { gaps_in = 5 } })\n'
         doc = load_lua(_write_lua(tmp_path, src))
         assert _assignments(doc) == {"general:gaps_in": "5"}
+        assert any("missing_module" in warning for warning in doc.read_warnings)
+
+    def test_error_cutting_the_file_short_is_reported(self, tmp_path: Path) -> None:
+        # The read keeps what ran before the error, but the rest of the file
+        # is gone from the document, and a save would drop it from disk too.
+        src = 'hl.config({ general = { gaps_in = 5 } })\nerror("boom")\n'
+        doc = load_lua(_write_lua(tmp_path, src))
+        assert _assignments(doc) == {"general:gaps_in": "5"}
+        assert any("boom" in warning for warning in doc.read_warnings)
+
+    def test_failed_callback_is_reported(self, tmp_path: Path) -> None:
+        src = 'hl.on("hyprland.start", function() error("boom") end)\n'
+        doc = load_lua(_write_lua(tmp_path, src))
+        assert any("boom" in warning for warning in doc.read_warnings)
+
+    def test_clean_config_has_no_warnings(self, tmp_path: Path) -> None:
+        doc = load_lua(_write_lua(tmp_path, "hl.config({ general = { gaps_in = 5 } })\n"))
+        assert doc.read_warnings == []
 
     def test_plugin_namespace_ignored(self, tmp_path: Path) -> None:
         src = (
