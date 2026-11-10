@@ -5,6 +5,14 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.20] - 2026-11-10
+
+### Fixed
+
+- A Lua config that iterates a query result no longer loses everything after the loop. The reader stubbed unknown `hl.*` calls to return `nil`, so `ipairs(hl.get_devices())` raised and the rest of the file was dropped. The list getters (`hl.get_devices()`, `hl.get_monitors()`, `hl.get_windows()`, `hl.get_loaded_plugins()`, …) now return empty lists.
+- Runtime `hl.on` callbacks (`window.open`, `config.reloaded`, …) are no longer run while reading. An `hl.config` inside one overwrote the static value, and an `hl.exec_cmd` became an `exec` line. Only `hyprland.start` and `hyprland.shutdown` callbacks are read.
+- The Hyprland 0.57 boolean window-rule effects `no_glow`, `no_wobble`, `no_xdg_drags`, `no_auto_hdr` and `confine_pointer` get a value when emitted (`on` in Hyprlang, `true` in Lua). An empty value was rejected.
+
 ## [0.9.19] - 2026-10-07
 
 ### Fixed

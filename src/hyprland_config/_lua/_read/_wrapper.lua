@@ -180,21 +180,28 @@ hl.define_submap = function(name, reset_or_fn, fn)
     end
 end
 
--- hl.on registers an event handler. We execute the callback so any
--- ``hl.exec_cmd`` calls inside get recorded — that's where users put
--- their autostart commands per the example config. ``current_event``
+-- hl.on registers an event handler. We execute startup/shutdown callbacks
+-- so any ``hl.exec_cmd`` calls inside get recorded — that's where users
+-- put their autostart commands per the example config. ``current_event``
 -- tells the recorded call which event it belongs to so the Python side
--- can route it back to ``exec`` / ``exec-shutdown``.
+-- can route it back to ``exec-once`` / ``exec-shutdown``. Every other
+-- event fires at runtime only; recording its callback would turn an
+-- ``hl.config`` in a ``window.open`` handler into a static assignment.
+local _EXEC_EVENTS = {
+    ["hyprland.start"] = true,
+    ["hyprland.shutdown"] = true,
+}
 hl.on = function(event, callback)
-    if type(callback) == "function" then
-        local prev = current_event
-        current_event = event
-        local ok, err = pcall(callback)
-        if not ok then
-            record("__error", "hl.on(" .. tostring(event) .. ") callback failed: " .. tostring(err))
-        end
-        current_event = prev
+    if not _EXEC_EVENTS[event] or type(callback) ~= "function" then
+        return
     end
+    local prev = current_event
+    current_event = event
+    local ok, err = pcall(callback)
+    if not ok then
+        record("__error", "hl.on(" .. tostring(event) .. ") callback failed: " .. tostring(err))
+    end
+    current_event = prev
 end
 
 -- Tag immediate exec_cmd with the surrounding hl.on event so the Python
@@ -207,6 +214,22 @@ hl.dispatch = function(d) record("dispatch_immediate", d) end
 hl.timer = function() end
 hl.version = function() return "0.0.0" end
 hl.print = print
+
+-- Query APIs whose result a config may iterate or index. The catch-all
+-- shim below returns nil, which turns ``ipairs(hl.get_devices())`` into an
+-- error that aborts the rest of the file. Empty results keep those configs
+-- readable without inventing runtime state the reader cannot know; getters
+-- for a single object (``hl.get_active_window()`` …) can stay on the shim,
+-- since nil is also what Hyprland returns when there is none.
+hl.get_devices = function() return {} end
+hl.get_monitors = function() return {} end
+hl.get_workspaces = function() return {} end
+hl.get_windows = function() return {} end
+hl.get_layers = function() return {} end
+hl.get_workspace_windows = function() return {} end
+hl.get_loaded_plugins = function() return {} end
+hl.get_cursor_pos = function() return { x = 0, y = 0 } end
+hl.get_current_submap = function() return "" end
 
 -- Anything else under hl gets a no-op shim so unknown future APIs don't
 -- blow up the reader.

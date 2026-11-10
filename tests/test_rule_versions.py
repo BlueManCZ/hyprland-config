@@ -10,6 +10,7 @@ from hyprland_config import (
     Rule,
     render_rule_hyprlang,
     render_rule_live,
+    render_rule_lua,
 )
 from hyprland_config._core._rules import (
     V2_TO_V3_EFFECT,
@@ -145,6 +146,20 @@ class TestRenderRuleLive:
     def test_live_layer_pre_v3(self):
         rule = _layer("waybar", [("blur", "")])
         assert render_rule_live(rule, "0.49.0") == [("layerrule", "blur, waybar")]
+
+
+class TestHyprland057BoolEffects:
+    """0.57 added boolean window-rule effects; both emitters must fill a value."""
+
+    def test_hyprlang_fills_on(self):
+        for effect in ("no_glow", "no_wobble", "no_xdg_drags", "no_auto_hdr", "confine_pointer"):
+            rule = _window([("class", "kitty")], [(effect, "")])
+            assert render_rule_hyprlang(rule) == f"windowrule = match:class kitty, {effect} on\n"
+
+    def test_lua_emits_true(self):
+        for effect in ("no_glow", "no_wobble", "no_xdg_drags", "no_auto_hdr", "confine_pointer"):
+            rule = _window([("class", "kitty")], [(effect, "")])
+            assert f"{effect} = true" in render_rule_lua(rule)
 
 
 class TestRenameMapConsistency:
