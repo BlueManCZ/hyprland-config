@@ -5,12 +5,14 @@ to translate keyword lines during document emit. Centralising the
 mapping here keeps the live-apply path and the bulk emit path in sync.
 """
 
+import re
 from collections.abc import Callable
 from functools import partial
 from typing import Any
 
+from hyprland_config._core._values import lua_option_name
 from hyprland_config._hyprlang._bind import is_bind_keyword, parse_bind_line
-from hyprland_config._hyprlang._parser import is_keyword
+from hyprland_config._hyprlang._parser import is_keyword, unescape_hash
 from hyprland_config._lua._emit._bind import emit_bind, emit_unbind
 from hyprland_config._lua._emit._dispatchers import (
     dispatcher_drops_address_selector,
@@ -20,6 +22,7 @@ from hyprland_config._lua._emit._format import (
     INDENT,
     coerce_option_value,
     format_table,
+    lua_accepts_empty,
     quote_string,
     set_nested,
     split_key,
@@ -86,7 +89,11 @@ def emit_keyword_line(key: str, value: str) -> str | None:
     ``hl.exec_cmd(...)`` call — without the surrounding
     ``hl.on("hyprland.start", function() … end)`` block that the
     serializer wraps autostart entries in.
+
+    *value* is Hyprlang text, so a ``##`` escape in it becomes the literal
+    ``#`` it stands for.
     """
+    value = unescape_hash(value)
     if is_bind_keyword(key):
         return emit_bind(key, value)
     emitter = STATIC_KEYWORD_EMITTERS.get(key)
@@ -102,10 +109,54 @@ def emit_option_assignment(full_key: str, value: str) -> str:
     ``general:col.inactive_border``). Both the colon and the dot sub-prefix
     convention become nesting boundaries in the Lua table, mirroring
     Hyprland's Lua config layout.
+
+    A per-device key (``device[NAME]:FIELD``, or ``device:NAME:FIELD``)
+    emits ``hl.device({name = NAME, FIELD = …})``; ``hl.config`` has no
+    ``device`` table.
+
+    Raises ``ValueError`` for an empty value the option can't take in Lua
+    (see :func:`lua_accepts_empty`), since no Lua value resets it, and for
+    a ``device`` key that names no device.
     """
+    value = unescape_hash(value)
+    device = _split_device_key(full_key)
+    option_key = f"device:{device[1]}" if device is not None else full_key
+    if not value.strip() and not lua_accepts_empty(option_key):
+        raise ValueError(
+            f"Hyprland's Lua API has no empty value for {full_key!r}; "
+            "leave it out of the config to get the default"
+        )
+    if device is not None:
+        name, field = device
+        table = {
+            "name": name,
+            lua_option_name(field): coerce_option_value(option_key, value),
+        }
+        return f"hl.device({format_table(table, indent=0)})"
     tree: dict[str, Any] = {}
     set_nested(tree, split_key(full_key), coerce_option_value(full_key, value))
     return f"hl.config({format_table(tree, indent=0)})"
+
+
+_DEVICE_KEY_RE = re.compile(
+    r"^device(?:\[(?P<bracket>[^\]]+)\]|:(?P<plain>[^:]+)):(?P<field>[^:]+)$"
+)
+
+
+def _split_device_key(full_key: str) -> tuple[str, str] | None:
+    """Return ``(device name, field)`` for a per-device key, else ``None``.
+
+    Raises ``ValueError`` for a ``device:FIELD`` key, which names no device
+    for ``hl.device`` to target.
+    """
+    if not full_key.startswith("device"):
+        return None
+    match = _DEVICE_KEY_RE.match(full_key)
+    if match is None:
+        if full_key.startswith(("device:", "device[")):
+            raise ValueError(f"No device name in {full_key!r}; expected device[NAME]:FIELD")
+        return None
+    return match.group("bracket") or match.group("plain"), match.group("field")
 
 
 def _unmappable_detail(key: str, value: str) -> str:
@@ -135,7 +186,8 @@ def keyword_to_lua(key: str, value: Any) -> str:
     value nested at the right depth.
 
     Raises ``ValueError`` when the keyword has no Lua equivalent the emitter
-    can produce (``submap``, an unmapped dispatcher, a malformed line).
+    can produce (``submap``, an unmapped dispatcher, a malformed line), or
+    the option can't take *value* in Lua (see :func:`emit_option_assignment`).
     """
     value_str = str(value)
     if is_keyword(key):

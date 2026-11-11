@@ -1,5 +1,6 @@
 """Lua emitter — structure, value coercion, key formatting, property/fuzz, luac."""
 
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -957,3 +958,86 @@ class TestDashedOptionNames:
         out = serialize_lua(doc)
         assert "tap_to_click = false" in out
         assert "tap-to-click" not in out
+
+
+class TestEmptyValues:
+    """``key =`` unsets an option in Hyprlang; Lua has no empty value for most.
+
+    ``accel_profile``, ``scroll_method`` and ``tap_button_map`` are strings
+    Hyprland checks against a word list, which rejects ``""`` too (hyprmod
+    issue 108), and gradients, numbers and font weights need a value.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "input:accel_profile",
+            "input:scroll_method",
+            "input:touchpad:tap_button_map",
+            "decoration:shadow:color_inactive",
+            "general:border_size",
+        ],
+    )
+    def test_live_apply_rejects_it(self, key: str) -> None:
+        with pytest.raises(ValueError, match="no empty value"):
+            keyword_to_lua(key, "")
+
+    def test_document_leaves_it_out(self) -> None:
+        doc = parse_string("input {\n    accel_profile =\n    sensitivity = 0.5\n}\n")
+        out = serialize_lua(doc)
+        assert "accel_profile" not in out
+        assert "sensitivity = 0.5," in out
+
+    def test_plain_string_option_keeps_it(self) -> None:
+        assert 'kb_variant = "",' in keyword_to_lua("input:kb_variant", "")
+        assert 'kb_variant = "",' in serialize_lua(parse_string("input:kb_variant =\n"))
+
+    def test_device_field_keeps_it(self) -> None:
+        # ``hl.device`` fields have no word list to check.
+        doc = parse_string("device {\n    name = mouse\n    accel_profile =\n}\n")
+        assert 'accel_profile = "",' in serialize_lua(doc)
+
+    def test_unknown_key_passes_through(self) -> None:
+        assert 'mode = "",' in keyword_to_lua("plugin:hyprexpo:mode", "")
+
+
+class TestGapOptions:
+    """Gap options are a number or a ``{top, right, bottom, left}`` table in Lua."""
+
+    def test_per_side_gaps_become_a_table(self) -> None:
+        out = keyword_to_lua("general:gaps_out", "5,10,15,20")
+        assert "gaps_out = {" in out
+        assert "top = 5," in out
+        assert "right = 10," in out
+        assert "bottom = 15," in out
+        assert "left = 20," in out
+
+    def test_css_shorthand_expands(self) -> None:
+        out = serialize_lua(parse_string("general:gaps_in = 5, 10\n"))
+        assert "top = 5," in out
+        assert "right = 10," in out
+        assert "bottom = 5," in out
+        assert "left = 10," in out
+
+    def test_single_value_stays_a_number(self) -> None:
+        assert "gaps_in = 5," in keyword_to_lua("general:gaps_in", "5")
+
+    def test_space_separated_reads_like_hyprlang(self) -> None:
+        # Hyprlang splits a gap option on commas and reads each part's
+        # leading integer, so ``5 10`` is 5 on every side.
+        assert "gaps_out = 5," in keyword_to_lua("general:gaps_out", "5 10")
+
+
+class TestDeviceLiveApply:
+    def test_bracket_form(self) -> None:
+        out = keyword_to_lua("device[logitech-mouse]:sensitivity", "0.5")
+        assert out == 'hl.device({\n    name = "logitech-mouse",\n    sensitivity = 0.5,\n})'
+
+    def test_colon_form(self) -> None:
+        out = keyword_to_lua("device:logitech-mouse:tap-to-click", "false")
+        assert 'name = "logitech-mouse",' in out
+        assert "tap_to_click = false," in out
+
+    def test_field_without_a_device_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="No device name"):
+            keyword_to_lua("device:sensitivity", "0.5")

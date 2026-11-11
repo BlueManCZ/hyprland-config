@@ -6,6 +6,7 @@ Line-style assembly happens here; block-style buffer collection lives in
 the document walker because it spans multiple input lines.
 """
 
+from dataclasses import replace
 from typing import Any
 
 from hyprland_config._core._model import Rule
@@ -16,6 +17,7 @@ from hyprland_config._core._rules import (
     split_rule_body,
 )
 from hyprland_config._core._values import parse_hyprlang_bool
+from hyprland_config._hyprlang._parser import unescape_hash
 from hyprland_config._lua._emit._format import (
     coerce_value,
     format_table,
@@ -106,10 +108,26 @@ def render_rule_lua(rule: Rule) -> str:
 
     Both rule kinds share the same table shape (``name``, ``enabled``,
     ``match``, plus effect fields); only the wrapping function differs.
-    Used by the walker for full-document emission, by the single-line
-    emitters below, and by single-Rule consumers (e.g. hyprmod's
-    edit-dialog Lua preview) that need the same snippet without
-    standing up a Document.
+    For single-Rule consumers (e.g. hyprmod's edit-dialog Lua preview)
+    that need the same snippet without standing up a Document.
+
+    The matcher and effect values are Hyprlang text, so a ``##`` escape in
+    them becomes the literal ``#`` it stands for.
+    """
+    return emit_rule_call(
+        replace(
+            rule,
+            matchers=[(k, unescape_hash(v)) for k, v in rule.matchers],
+            effects=[(k, unescape_hash(v)) for k, v in rule.effects],
+        )
+    )
+
+
+def emit_rule_call(rule: Rule) -> str:
+    """:func:`render_rule_lua` for a rule whose values are already unescaped.
+
+    Used by the walker and the single-line emitters below, which unescape
+    the Hyprlang text once on the way in.
     """
     table: dict[str, Any] = {}
     if rule.name:
@@ -164,7 +182,7 @@ def emit_windowrule(args: str, *, v2: bool) -> str | None:
     if not effects:
         return None
     keyword = "windowrulev2" if v2 else "windowrule"
-    return render_rule_lua(
+    return emit_rule_call(
         Rule(
             raw=f"{keyword} = {args}",
             kind="windowrule",
@@ -197,7 +215,7 @@ def emit_layerrule(args: str) -> str | None:
 
     if not effects:
         return None
-    return render_rule_lua(
+    return emit_rule_call(
         Rule(
             raw=f"layerrule = {args}",
             kind="layerrule",

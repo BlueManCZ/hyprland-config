@@ -20,6 +20,7 @@ from hyprland_config._core._values import (
     option_type,
     parse_hyprlang_bool,
 )
+from hyprland_config._lua._workspace_rules import parse_gap_for_lua
 
 INDENT = "    "
 
@@ -267,9 +268,58 @@ def coerce_option_value(full_key: str, value: str) -> Any:
     reference still takes the shape path, which turns the marker into the
     ``LuaExpr`` the assembled output needs.
     """
-    if option_type(full_key) == "string" and not has_var_marker(value):
+    kind = option_type(full_key)
+    if kind == "string" and not has_var_marker(value):
         return value
+    if kind == "cssgap" and (gap := _option_gap(value)) is not None:
+        return gap
     return coerce_value(value)
+
+
+_GAP_PART_RE = re.compile(r"\s*(-?\d+)")
+
+
+def _option_gap(value: str) -> int | dict[str, int] | None:
+    """Read a gap option's Hyprlang value as the Lua number or per-side table.
+
+    Hyprlang splits the value on commas (``gaps_out = 5,10,15,20``, CSS
+    order) and reads each part as a leading integer, so ``5 10`` is just
+    ``5``. Lua takes one number or a ``{top, right, bottom, left}`` table and
+    rejects the string. ``None`` when *value* isn't one to four integers.
+    """
+    nums: list[str] = []
+    for part in value.split(","):
+        m = _GAP_PART_RE.match(part)
+        if m is None:
+            return None
+        nums.append(m.group(1))
+    if len(nums) > 4:
+        return None
+    return parse_gap_for_lua(" ".join(nums))
+
+
+# String options Hyprland checks against a fixed word list (``strChoice`` in
+# ``ConfigValues.cpp``), which hyprland-schema doesn't carry. Their default
+# is the empty string, yet the Lua parser runs the check on it too.
+_CHOICE_STRING_OPTIONS = frozenset(
+    {"input:accel_profile", "input:scroll_method", "input:touchpad:tap_button_map"}
+)
+
+
+def lua_accepts_empty(full_key: str) -> bool:
+    """Whether Hyprland's Lua API takes ``""`` for the option *full_key*.
+
+    Hyprlang reads ``key =`` as "unset" for any option, but in Lua only a
+    plain string option takes ``""``: numbers, colours, gradients and font
+    weights reject it, and so do :data:`_CHOICE_STRING_OPTIONS`. No Lua value
+    resets those, so an empty one is left out of the config, which gives the
+    default. A ``device { … }`` field has no word list to check, and a key
+    the schema doesn't know is passed through for Hyprland to judge.
+    """
+    kind = option_type(full_key)
+    if kind is None:
+        return True
+    return kind == "string" and full_key not in _CHOICE_STRING_OPTIONS
 
 
 def _try_gradient(value: str) -> dict[str, Any] | None:

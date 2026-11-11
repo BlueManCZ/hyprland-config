@@ -15,9 +15,12 @@ from hyprland_config._hyprlang._parser import escape_hash
 from hyprland_config._lua._read._config import format_number, scalar_to_hyprlang
 from hyprland_config._lua._workspace_rules import (
     LAYOUTOPT_LUA_NAME,
+    format_gap_for_hyprlang,
     format_layout_opts,
     lua_field_to_hyprlang,
 )
+
+_ADDRESERVED_ORDER = ("top", "bottom", "left", "right")
 
 
 def monitor_value(t: dict[str, Any]) -> str:
@@ -26,15 +29,25 @@ def monitor_value(t: dict[str, Any]) -> str:
     ``disabled = true`` is the Lua-side counterpart of Hyprlang's
     ``monitor = OUTPUT, disable`` short-form; we round-trip it back to
     the legacy shape so line-oriented consumers see the canonical form
-    regardless of which side wrote it.
-
-    A literal ``#`` (in a ``desc:`` output) is escaped as ``##`` so the line
-    stays valid Hyprlang — see :func:`emit_monitor`.
+    regardless of which side wrote it. A table that sets only ``transform``
+    or only ``reserved`` reads back as the ``transform`` / ``addreserved``
+    short form, which changes that one field of the output's rule, as
+    ``hl.monitor`` does — rather than as a full rule with default mode,
+    position and scale.
     """
+    output = str(t.get("output", ""))
     if t.get("disabled") is True:
-        return escape_hash(f"{t.get('output', '')}, disable")
+        return f"{output}, disable"
+    fields = set(t) - {"output"}
+    if fields == {"transform"}:
+        return f"{output}, transform, {scalar_to_hyprlang(t['transform'])}"
+    if fields == {"reserved"} and isinstance(t["reserved"], dict):
+        gap = t["reserved"]
+        # ``addreserved`` lists them top, bottom, left, right.
+        sides = [scalar_to_hyprlang(gap.get(side, 0)) for side in _ADDRESERVED_ORDER]
+        return f"{output}, addreserved, {', '.join(sides)}"
     parts = [
-        str(t.get("output", "")),
+        output,
         str(t.get("mode", "preferred")),
         str(t.get("position", "auto")),
         format_number(t.get("scale", 1)),
@@ -42,9 +55,14 @@ def monitor_value(t: dict[str, Any]) -> str:
     excluded = {"output", "mode", "position", "scale", "disabled"}
     extras = {k: v for k, v in t.items() if k not in excluded}
     for key in sorted(extras):
+        value = extras[key]
         parts.append(key)
-        parts.append(scalar_to_hyprlang(extras[key]))
-    return escape_hash(", ".join(parts))
+        # A ``reserved`` table goes in as one ``T R B L`` value; the pair
+        # list is comma-separated.
+        parts.append(
+            format_gap_for_hyprlang(value) if isinstance(value, dict) else scalar_to_hyprlang(value)
+        )
+    return ", ".join(parts)
 
 
 def bezier_value(name: Any, t: dict[str, Any]) -> str:
@@ -94,13 +112,13 @@ def rule_to_node(kind: str, t: dict[str, Any]) -> Rule:
     matchers: list[tuple[str, str]] = []
     if isinstance(t.get("match"), dict):
         for mkey in sorted(t["match"]):
-            matchers.append((mkey, scalar_to_hyprlang(t["match"][mkey])))
+            matchers.append((mkey, escape_hash(scalar_to_hyprlang(t["match"][mkey]))))
 
     effects: list[tuple[str, str]] = []
     for key in sorted(t):
         if key in ("match", "name", "enabled"):
             continue
-        effects.append((key, _effect_args_from_lua(t[key])))
+        effects.append((key, escape_hash(_effect_args_from_lua(t[key]))))
 
     return Rule(
         raw="",
@@ -174,7 +192,7 @@ def emit_device(doc: Document, t: dict[str, Any], *, source: str = "") -> None:
         value = t[lua_key]
         full_key = hyprlang_option_key(f"device:{lua_key}")
         key = full_key.removeprefix("device:")
-        rendered = scalar_to_hyprlang(value)
+        rendered = escape_hash(scalar_to_hyprlang(value))
         doc.lines.append(
             Assignment(
                 raw=f"    {key} = {rendered}\n",

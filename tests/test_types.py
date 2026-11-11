@@ -2,7 +2,7 @@
 
 import pytest
 
-from hyprland_config import Color
+from hyprland_config import Color, parse_version
 from hyprland_config._core._types import Gradient, Vec2
 
 
@@ -151,3 +151,23 @@ class TestVec2:
         assert v.y == 1080
         assert isinstance(v.x, int)
         assert isinstance(v.y, int)
+
+
+class TestParseVersion:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("0.48", (0, 48)),
+            ("0.55.0", (0, 55, 0)),
+            ("v0.57.1", (0, 57, 1)),
+            # A build between tags reports the tag plus a suffix; it must not
+            # read as "unknown", which callers treat as the oldest version.
+            ("v0.57.0-12-gabc1234", (0, 57, 0)),
+            ("0.57.0-dev", (0, 57, 0)),
+            ("", ()),
+            (None, ()),
+            ("git", ()),
+        ],
+    )
+    def test_parse(self, text: str | None, expected: tuple[int, ...]) -> None:
+        assert parse_version(text) == expected

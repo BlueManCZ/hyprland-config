@@ -274,6 +274,41 @@ class TestKeywordCalls:
         path = _write_lua(tmp_path, "hl.monitor({ output = 'desc:Dell #tBwz', disabled = true })")
         assert _keywords(load_lua(path), "monitor") == ["desc:Dell ##tBwz, disable"]
 
+    def test_monitor_transform_only_reads_as_short_form(self, tmp_path: Path) -> None:
+        # ``hl.monitor`` merges into the output's rule, so a lone field must
+        # not come back as a full rule that resets mode, position and scale.
+        path = _write_lua(tmp_path, "hl.monitor({ output = 'DP-1', transform = 1 })")
+        assert _keywords(load_lua(path), "monitor") == ["DP-1, transform, 1"]
+
+    def test_monitor_reserved_only_reads_as_addreserved(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.monitor({ output = 'DP-1', reserved = { top = 10, right = 40, bottom = 20 } })",
+        )
+        assert _keywords(load_lua(path), "monitor") == ["DP-1, addreserved, 10, 20, 0, 40"]
+
+    def test_monitor_reserved_in_full_rule(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.monitor({ output = 'DP-1', mode = 'preferred', position = 'auto', scale = 1, "
+            "reserved = { top = 10, left = 5 } })",
+        )
+        assert _keywords(load_lua(path), "monitor") == [
+            "DP-1, preferred, auto, 1, reserved, 10 0 0 5"
+        ]
+
+    def test_hash_escaped_in_every_value(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.env('FOO', 'a#b')\n"
+            "hl.config({ misc = { swallow_regex = '^(#kitty)$' } })\n"
+            "hl.window_rule({ match = { title = 'a#b' }, float = true })\n",
+        )
+        doc = load_lua(path)
+        assert _keywords(doc, "env") == ["FOO, a##b"]
+        assert _assignments(doc) == {"misc:swallow_regex": "^(##kitty)$"}
+        assert _rules(doc, "windowrule")[0].matchers == [("title", "a##b")]
+
     def test_bezier(self, tmp_path: Path) -> None:
         path = _write_lua(
             tmp_path,
@@ -742,6 +777,32 @@ class TestErrors:
         doc = load_lua(_write_lua(tmp_path, "hl.config({ general = { gaps_in = 5 } })\n"))
         assert doc.read_warnings == []
 
+    def test_save_refuses_a_partly_read_config(self, tmp_path: Path) -> None:
+        # Saving re-serializes the whole file from the document, which lost
+        # everything after the error; writing it would drop that from disk.
+        src = (
+            "hl.config({ general = { gaps_in = 5 } })\n"
+            'error("boom")\n'
+            "hl.config({ general = { gaps_out = 20 } })\n"
+        )
+        path = _write_lua(tmp_path, src)
+        doc = load_lua(path)
+        doc.set("general:border_size", 3)
+        with pytest.raises(LuaReaderError, match="boom"):
+            doc.save()
+        assert path.read_text() == src
+
+    def test_save_force_writes_anyway(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, 'hl.config({ general = { gaps_in = 5 } })\nerror("boom")\n')
+        doc = load_lua(path)
+        doc.set("general:border_size", 3)
+        doc.save(force=True)
+        assert "border_size = 3" in path.read_text()
+
+    def test_unmodified_partial_read_saves_nothing(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, 'error("boom")\n')
+        load_lua(path).save()  # nothing dirty, nothing written, no error
+
     def test_plugin_namespace_ignored(self, tmp_path: Path) -> None:
         src = (
             "hl.plugin.hyprbars.bar_height = 20\n"  # unguarded nested write
@@ -931,6 +992,36 @@ class TestRoundTripWithEmitter:
         assert _keywords(doc, "bezier") == ["easeOut, 0.05, 0.9, 0.1, 1.05"]
         # Round-trip normalises the legacy ``1`` to the canonical ``true``.
         assert _keywords(doc, "animation") == ["windows, true, 7, easeOut, slide"]
+
+    def test_round_trip_monitor_short_forms(self, tmp_path: Path) -> None:
+        src = (
+            "monitor = DP-1, 2560x1440@144, 0x0, 1\n"
+            "monitor = DP-1, transform, 1\n"
+            "monitor = DP-1, addreserved, 10, 20, 30, 40\n"
+            "monitor = DP-2, disable\n"
+        )
+        assert _keywords(self._via_lua(src, tmp_path), "monitor") == [
+            ln.split(" = ", 1)[1] for ln in src.splitlines()
+        ]
+
+    def test_round_trip_monitorv2_block(self, tmp_path: Path) -> None:
+        src = "monitorv2 {\n    output = DP-1\n    mode = 1920x1080@60\n    transform = 1\n}\n"
+        assert _keywords(self._via_lua(src, tmp_path), "monitor") == [
+            "DP-1, 1920x1080@60, auto, 1, transform, 1"
+        ]
+
+    def test_round_trip_literal_hash(self, tmp_path: Path) -> None:
+        src = "env = FOO, a##b\nexec-once = echo ####\n"
+        doc = self._via_lua(src, tmp_path)
+        assert _keywords(doc, "env") == ["FOO, a##b"]
+        assert _keywords(doc, "exec-once") == ["echo ####"]
+        # And back out to Lua unchanged.
+        assert 'hl.env("FOO", "a#b")' in serialize_lua(doc)
+        assert 'hl.exec_cmd("echo ##")' in serialize_lua(doc)
+
+    def test_round_trip_gap_table(self, tmp_path: Path) -> None:
+        doc = self._via_lua("general:gaps_out = 5,10,15,20\n", tmp_path)
+        assert _assignments(doc) == {"general:gaps_out": "5,10,15,20"}
 
     def test_round_trip_monitor_desc_with_hash(self, tmp_path: Path) -> None:
         line = "desc:Dell AW3423DW ##tBwz, 3440x1440@174.96Hz, 1440x520, 1, bitdepth, 10"

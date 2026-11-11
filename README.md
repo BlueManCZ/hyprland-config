@@ -243,6 +243,8 @@ Under the hood `load_lua()` shells out to a `lua` interpreter to run the user's 
 
 Because of that, `save()` rewrites each modified file rather than patching lines in place, and only the files that changed are touched (`Document.lua` records which format the document came from). Sub-files stay split: each `require()` position is re-emitted as a `require()` call instead of being inlined into the parent. A rewritten file leads with its own `hl.config({...})` block, so an option the parent sets *after* a `require()` that sets the same key will lose to the required file on the next load.
 
+A config that raises an error while being read still loads, with the errors in `Document.read_warnings`, but whatever ran after the error is missing from the document. `save()` refuses to write such a document (it raises `LuaReaderError`), since that would drop the missing part from disk; `save(force=True)` writes it anyway.
+
 ### Format-agnostic load and serialize
 
 When a caller doesn't know in advance whether the user is on Hyprlang or Lua, the `*_any` helpers dispatch on the file suffix:

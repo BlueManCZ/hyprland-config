@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from hyprland_config._core._model import Document, Keyword, Source
+from hyprland_config._hyprlang._parser import escape_hash
 from hyprland_config._lua._read._bind import bind_value, unbind_value
 from hyprland_config._lua._read._config import emit_config_assignments, scalar_to_hyprlang
 from hyprland_config._lua._read._keywords import (
@@ -117,6 +118,10 @@ def _open_sub_document(parent: Document, path_str: str, *, parent_source: str) -
 
 
 def _emit_keyword(doc: Document, name: str, value: str, *, source: str = "") -> None:
+    # Lua strings hold a literal ``#``; Hyprlang text escapes it as ``##``,
+    # or the rest of the line would read as a comment. The Lua emitter
+    # unescapes it again.
+    value = escape_hash(value)
     doc.lines.append(
         Keyword(
             raw=f"{name} = {value}\n",

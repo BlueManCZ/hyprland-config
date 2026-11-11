@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `Document.save()` raises `LuaReaderError` when the document has `read_warnings`. The read stopped early, so saving would drop the rest of the config from disk. Pass `force=True` to save anyway.
+
 ### Fixed
 
 - Options with a dash in their name (`input:touchpad:tap-to-click`, `input:touchpad:tap-and-drag`, the `input-capture:` section) now use Hyprland's Lua spelling (`tap_to_click`) in `hl.config` and `hl.device`. Live-apply failed with `unknown config key`. Reading a Lua config maps them back to the dashed key. https://github.com/BlueManCZ/hyprmod/issues/102
-- A `#` in a `monitor` line's `desc:` output (some EDID serials start with one) is now written to Lua as `#`, not as the Hyprlang escape `##`, which matched no monitor. Reading `hl.monitor` back escapes it again. Other keywords still pass `##` through unchanged. https://github.com/BlueManCZ/hyprland-monitors/issues/3
+- Hyprlang's `##` escape is now written to Lua as a literal `#` in every value, so a `desc:` output with a `#` (some EDID serials start with one) matches its monitor. Reading a Lua config escapes it again. https://github.com/BlueManCZ/hyprland-monitors/issues/3
+- An empty value Hyprland's Lua API rejects (`input:accel_profile`, `input:scroll_method`, `input:touchpad:tap_button_map`, and number, gradient or font-weight options) is left out of a saved Lua config, giving the default. `keyword_to_lua` raises `ValueError` for it. https://github.com/BlueManCZ/hyprmod/issues/108
+- Gap options with per-side values (`gaps_out = 5,10,15,20`) emit the `{top, right, bottom, left}` table Lua expects, not a string.
+- The `monitor` short forms `disabled`, `transform` and `addreserved` emit valid `hl.monitor` calls, and read back from Lua as the same short forms.
+- A `monitorv2 { … }` block emits `hl.monitor`, not `hl.config({ monitorv2 = … })`.
+- `keyword_to_lua("device[NAME]:FIELD", …)` (or `device:NAME:FIELD`) emits `hl.device`. `hl.config` has no `device` table.
+- `parse_version()` ignores a suffix (`0.57.0-dev`, `v0.57.0-12-gabc1234`). It returned `()`, so `serialize_hyprlang` wrote pre-0.53 window rules for a Hyprland built between tags.
 
 ## [0.9.20] - 2026-11-10
 
