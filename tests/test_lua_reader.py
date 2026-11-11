@@ -222,6 +222,22 @@ class TestKeywordCalls:
         )
         assert _keywords(load_lua(path), "monitor") == ["DP-1, 2560x1440@144, 0x0, 1"]
 
+    def test_monitor_desc_hash_escaped(self, tmp_path: Path) -> None:
+        # A literal ``#`` in the output reads back as Hyprlang's ``##`` escape,
+        # so the synthesised line isn't cut short at an inline comment.
+        path = _write_lua(
+            tmp_path,
+            "hl.monitor({ output = 'desc:Dell AW3423DW #tBwz', mode = '3440x1440@174.96Hz', "
+            "position = '0x0', scale = 1 })",
+        )
+        assert _keywords(load_lua(path), "monitor") == [
+            "desc:Dell AW3423DW ##tBwz, 3440x1440@174.96Hz, 0x0, 1"
+        ]
+
+    def test_monitor_desc_hash_escaped_in_short_form(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.monitor({ output = 'desc:Dell #tBwz', disabled = true })")
+        assert _keywords(load_lua(path), "monitor") == ["desc:Dell ##tBwz, disable"]
+
     def test_bezier(self, tmp_path: Path) -> None:
         path = _write_lua(
             tmp_path,
@@ -879,6 +895,13 @@ class TestRoundTripWithEmitter:
         assert _keywords(doc, "bezier") == ["easeOut, 0.05, 0.9, 0.1, 1.05"]
         # Round-trip normalises the legacy ``1`` to the canonical ``true``.
         assert _keywords(doc, "animation") == ["windows, true, 7, easeOut, slide"]
+
+    def test_round_trip_monitor_desc_with_hash(self, tmp_path: Path) -> None:
+        line = "desc:Dell AW3423DW ##tBwz, 3440x1440@174.96Hz, 1440x520, 1, bitdepth, 10"
+        doc = self._via_lua(f"monitor = {line}\n", tmp_path)
+        assert _keywords(doc, "monitor") == [line]
+        # The synthesised Hyprlang text parses back to the same full line.
+        assert _keywords(parse_string(serialize_hyprlang(doc)), "monitor") == [line]
 
     def test_round_trip_group_and_pass_dispatchers(self, tmp_path: Path) -> None:
         src = (

@@ -5,6 +5,13 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A `monitor` line whose `desc:` output contains a `#` now keeps it. Some EDID serials start with one (`Dell Inc. Dell AW3423DW #tBwzGDAYEA8I`), and Hyprlang reads a bare ` #` as an inline comment, so the line has to escape it as `##`. The Lua emitter passed the `##` through literally, so the output no longer matched the monitor's description; it now writes a single `#`. Reading `hl.monitor` back escapes `#` as `##` again, so the synthesised line keeps everything after it. https://github.com/BlueManCZ/hyprland-monitors/issues/3
+  - Only `monitor` is converted. Other keywords and options still pass `##` through to Lua unchanged.
+
 ## [0.9.20] - 2026-11-10
 
 ### Added

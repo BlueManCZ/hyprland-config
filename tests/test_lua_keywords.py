@@ -86,6 +86,21 @@ class TestMonitorKeyword:
         assert 'output = "",' in out
         assert "disabled = true," in out
 
+    def test_monitor_desc_unescapes_hash(self) -> None:
+        # Some EDID serials start with ``#``. Hyprlang needs it escaped as ``##``
+        # (a bare `` #`` starts an inline comment and drops the rest of the
+        # line); the Lua string must hold the literal ``#`` Hyprland matches.
+        src = "monitor = desc:Dell Inc. Dell AW3423DW ##tBwzGDAYEA8I, 3440x1440@174.96Hz, 0x0, 1\n"
+        out = serialize_lua(parse_string(src))
+        assert 'output = "desc:Dell Inc. Dell AW3423DW #tBwzGDAYEA8I",' in out
+        assert 'mode = "3440x1440@174.96Hz",' in out
+        assert 'position = "0x0",' in out
+
+    def test_monitor_desc_unescapes_hash_on_live_apply(self) -> None:
+        out = keyword_to_lua("monitor", "desc:Dell AW3423DW ##tBwz, disable")
+        assert 'output = "desc:Dell AW3423DW #tBwz",' in out
+        assert "disabled = true," in out
+
 
 class TestBezierKeyword:
     def test_bezier_emits_hl_curve(self) -> None:

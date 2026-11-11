@@ -103,6 +103,23 @@ def _strip_inline_comment(value: str) -> tuple[str, str]:
     return value, ""
 
 
+def unescape_hash(value: str) -> str:
+    """Turn Hyprlang's ``##`` escapes back into the literal ``#`` they stand for.
+
+    Use on a value already split from its inline comment, when it leaves
+    Hyprlang (e.g. becomes a Lua string), so the escape doesn't leak out.
+    """
+    return value.replace("##", "#")
+
+
+def escape_hash(value: str) -> str:
+    """Escape each literal ``#`` as ``##`` so Hyprlang keeps it in the value.
+
+    The inverse of :func:`unescape_hash`, for text entering a Hyprlang line.
+    """
+    return value.replace("#", "##")
+
+
 def _classify_kv(
     raw: str,
     lineno: int,
