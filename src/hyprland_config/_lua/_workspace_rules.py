@@ -104,7 +104,7 @@ def _is_truthy(value: Any) -> bool:
     return parse_hyprlang_bool(value) or False
 
 
-def _format_gap_for_hyprlang(value: Any) -> str:
+def format_gap_for_hyprlang(value: Any) -> str:
     """Render a Lua-side gap value (scalar or ``{t,r,b,l}`` dict) as Hyprlang.
 
     Scalars emit as a single integer. Dicts always emit the four-value
@@ -125,7 +125,7 @@ def _format_gap_for_hyprlang(value: Any) -> str:
     return str(value)
 
 
-def _parse_gap_for_lua(text: str) -> int | dict[str, int]:
+def parse_gap_for_lua(text: str) -> int | dict[str, int]:
     """Parse a Hyprlang gap string into the matching Lua representation.
 
     Single value → ``int``. Two, three, or four values → ``{top, right,
@@ -178,7 +178,7 @@ def lua_field_to_hyprlang(lua_name: str, value: Any) -> tuple[str, str]:
     if field.kind == "bool_inverse":
         return field.hyprlang_name, "false" if _is_truthy(value) else "true"
     if field.kind == "gap":
-        return field.hyprlang_name, _format_gap_for_hyprlang(value)
+        return field.hyprlang_name, format_gap_for_hyprlang(value)
     if field.kind == "int":
         return field.hyprlang_name, str(int(value))
     return field.hyprlang_name, value_to_conf(value)
@@ -201,7 +201,7 @@ def hyprlang_field_to_lua(hyprlang_name: str, value: str) -> tuple[str, Any]:
     if field.kind == "bool_inverse":
         return field.lua_name, not _is_truthy(value)
     if field.kind == "gap":
-        return field.lua_name, _parse_gap_for_lua(value)
+        return field.lua_name, parse_gap_for_lua(value)
     if field.kind == "int":
         try:
             return field.lua_name, int(value.strip())

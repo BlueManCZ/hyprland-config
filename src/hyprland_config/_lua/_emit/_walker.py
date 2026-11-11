@@ -3,8 +3,8 @@
 Walks a :class:`Document` and produces Lua source by routing each line
 to the right per-keyword emitter (see :mod:`._keywords`, :mod:`._bind`,
 :mod:`._rules`). The per-section state machine handles ``device { … }``,
-``windowrule { … }``, and ``layerrule { … }`` blocks which collect their
-contents across multiple input lines.
+``monitorv2 { … }``, ``windowrule { … }``, and ``layerrule { … }`` blocks
+which collect their contents across multiple input lines.
 
 Coverage:
 
@@ -18,6 +18,7 @@ Coverage:
 - ``windowrule`` / ``windowrulev2`` / ``layerrule`` / ``workspace`` /
   ``gesture`` / ``permission`` → matching ``hl.*`` calls.
 - ``device { … }`` section → ``hl.device({...})``.
+- ``monitorv2 { … }`` section → ``hl.monitor({...})``.
 - ``exec`` → top-level ``hl.exec_cmd(...)`` (Lua re-evaluates the file on
   every reload, matching Hyprlang ``exec`` semantics). ``exec-once`` is
   batched into one ``hl.on("hyprland.start", function() … end)`` block
@@ -60,6 +61,7 @@ from hyprland_config._core._model import (
 )
 from hyprland_config._core._values import lua_option_name
 from hyprland_config._hyprlang._bind import is_bind_keyword
+from hyprland_config._hyprlang._parser import unescape_hash
 from hyprland_config._lua._emit._bind import emit_bind, is_modifier_token
 from hyprland_config._lua._emit._conditional import translate_expression
 from hyprland_config._lua._emit._dispatchers import translate_dispatcher
@@ -72,6 +74,7 @@ from hyprland_config._lua._emit._format import (
     expand_value_lua,
     format_table,
     format_value,
+    lua_accepts_empty,
     lua_var_name,
     parse_hyprctl_dispatch,
     parse_hyprctl_keyword,
@@ -79,9 +82,9 @@ from hyprland_config._lua._emit._format import (
     set_nested,
     split_key,
 )
-from hyprland_config._lua._emit._keywords import format_exec_block
+from hyprland_config._lua._emit._keywords import emit_monitorv2, format_exec_block
 from hyprland_config._lua._emit._live_apply import STATIC_KEYWORD_EMITTERS
-from hyprland_config._lua._emit._rules import add_block_rule_field, render_rule_lua
+from hyprland_config._lua._emit._rules import add_block_rule_field, emit_rule_call
 
 
 @dataclass
@@ -558,6 +561,7 @@ def _format_var_preamble(
     prefix = "local " if local else ""
     lines: list[str] = []
     for name, value in names_values.items():
+        value = unescape_hash(value)
         # A multi-token modifier variable (``$shiftMod = $mainMod SHIFT``) has to
         # re-join with `` + `` so it reads as a modmask, not a single keysym, when
         # it lands in an ``hl.bind`` modifier string.
@@ -686,6 +690,10 @@ def _process_line(line: Line, state: _EmitState) -> None:
             if line.section_key:
                 buffer["name"] = line.section_key
             state.section_stack.append(("device", buffer))
+        elif line.name == "monitorv2":
+            # ``monitorv2[OUTPUT] { … }`` may name the output in the header.
+            buffer = {"output": line.section_key} if line.section_key else {}
+            state.section_stack.append(("monitorv2", buffer))
         elif line.name in _BLOCK_RULE_SECTIONS:
             # ``windowrule[my-name] { … }`` / ``layerrule[my-name] { … }``
             # seeds ``name`` from the section key; an inner ``name = …``
@@ -709,6 +717,8 @@ def _process_line(line: Line, state: _EmitState) -> None:
             close_name, close_buf = state.section_stack.pop()
             if close_name == "device" and close_buf is not None:
                 state.current.extras.append(f"hl.device({format_table(close_buf, indent=0)})")
+            elif close_name == "monitorv2" and close_buf is not None:
+                state.current.extras.append(emit_monitorv2(close_buf))
             elif close_name in ("windowrule", "windowrulev2") and close_buf is not None:
                 state.current.extras.append(f"hl.window_rule({format_table(close_buf, indent=0)})")
             elif close_name == "layerrule" and close_buf is not None:
@@ -721,11 +731,20 @@ def _process_line(line: Line, state: _EmitState) -> None:
         # reference survives downstream coercion as a ``LuaExpr`` pointing
         # at the ``var_X`` declaration. Hyprland variables are global across
         # ``source``\\ d files, so we resolve against the merged tree scope.
-        value = expand_value_lua(line.value, state.variables, state.referenced_vars)
+        # Hyprlang reads ``##`` as a literal ``#`` in any value; a Lua string
+        # holds the ``#`` itself.
+        value = expand_value_lua(unescape_hash(line.value), state.variables, state.referenced_vars)
+        if not value.strip() and not lua_accepts_empty(line.full_key):
+            # ``key =`` unsets the option in Hyprlang, but Lua has no empty
+            # value for it; leaving it out gives the same default.
+            return
         if state.section_stack:
             cur_name, cur_buf = state.section_stack[-1]
             if cur_name == "device" and cur_buf is not None:
                 cur_buf[lua_option_name(line.key)] = coerce_option_value(line.full_key, value)
+                return
+            if cur_name == "monitorv2" and cur_buf is not None:
+                cur_buf[line.key] = value
                 return
             if cur_name == "match" and cur_buf is not None:
                 # Field of a nested ``match { … }`` block — the ``match:``
@@ -753,7 +772,7 @@ def _process_line(line: Line, state: _EmitState) -> None:
                 # Hyprland to assign matching windows to workspace 1). Route
                 # the field into the block buffer instead of falling through
                 # to the standalone-keyword emitter.
-                add_block_rule_field(cur_buf, line.key, line.value)
+                add_block_rule_field(cur_buf, line.key, unescape_hash(line.value))
                 return
         _process_keyword(line, state)
         return
@@ -770,15 +789,15 @@ def _emit_rule(rule: Rule, state: _EmitState) -> None:
     expanded = replace(
         rule,
         matchers=[
-            (k, expand_value_lua(v, state.variables, state.referenced_vars))
+            (k, expand_value_lua(unescape_hash(v), state.variables, state.referenced_vars))
             for k, v in rule.matchers
         ],
         effects=[
-            (k, expand_value_lua(v, state.variables, state.referenced_vars))
+            (k, expand_value_lua(unescape_hash(v), state.variables, state.referenced_vars))
             for k, v in rule.effects
         ],
     )
-    state.current.extras.append(render_rule_lua(expanded))
+    state.current.extras.append(emit_rule_call(expanded))
 
 
 def _try_translate_hyprctl_dispatch(cmd: str) -> str | None:
@@ -801,7 +820,7 @@ def _process_keyword(line: Keyword, state: _EmitState) -> None:
     # ``$mainMod`` flows downstream as a token referencing the ``var_mainMod``
     # declaration rather than the inlined value. Hyprland variables are global
     # across ``source``\\ d files, so cross-file references resolve here too.
-    args = expand_value_lua(line.value, state.variables, state.referenced_vars)
+    args = expand_value_lua(unescape_hash(line.value), state.variables, state.referenced_vars)
     # Manual-conversion fallbacks below surface the user's original text, not
     # ``args``: ``expand_value_lua`` wraps every ``$var`` in \x01..\x02 sentinel
     # bytes, which would render as mojibake boxes in the "won't migrate" list.

@@ -159,20 +159,25 @@ class Vec2:
         return f"{self.x} {self.y}"
 
 
+_VERSION_RE = re.compile(r"v?(\d+(?:\.\d+)*)")
+
+
 def parse_version(version: str | None) -> tuple[int, ...]:
     """Parse a Hyprland version string into a comparable tuple.
 
     Accepts ``"0.48"``, ``"0.55.0"``, and the ``v``-prefixed forms found
-    in git tags. Returns an empty tuple for ``None``, the empty string,
-    or anything that doesn't parse cleanly — callers can treat an empty
-    tuple as "unknown" and compare conservatively.
+    in git tags. A suffix after the numbers (``"0.57.0-dev"``, or the
+    ``"v0.57.0-12-gabc1234"`` of a build between tags) is ignored. Returns
+    an empty tuple for ``None``, the empty string, or anything that doesn't
+    start with a version number — callers can treat an empty tuple as
+    "unknown" and compare conservatively.
     """
     if not version:
         return ()
-    try:
-        return tuple(int(p) for p in version.lstrip("v").split("."))
-    except ValueError:
+    match = _VERSION_RE.match(version.strip())
+    if match is None:
         return ()
+    return tuple(int(p) for p in match.group(1).split("."))
 
 
 def normalize_gradient_string(value: str) -> str:

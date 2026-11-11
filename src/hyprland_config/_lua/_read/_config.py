@@ -10,8 +10,10 @@ level so the round-trip with the Hyprlang parser is symmetric.
 from typing import Any
 
 from hyprland_config._core._model import Assignment, Document
-from hyprland_config._core._values import hyprlang_option_key
+from hyprland_config._core._values import hyprlang_option_key, option_type
+from hyprland_config._hyprlang._parser import escape_hash
 from hyprland_config._lua._emit._format import DOT_PREFIX_KEYS
+from hyprland_config._lua._workspace_rules import format_gap_for_hyprlang
 
 
 def emit_config_assignments(
@@ -29,10 +31,11 @@ def emit_config_assignments(
     its leaves come out as ``general:col.inactive_border`` — matching the
     Hyprlang convention rather than a third colon level.
 
-    Gradient table values (``{ colors = {...}, angle = N }``) and Vec2
-    array values (``{ x, y }``) get reassembled into their Hyprlang
-    string form so downstream consumers see the same shape they would
-    for a parsed ``.conf``.
+    Gradient table values (``{ colors = {...}, angle = N }``), per-side gap
+    tables (``{ top = 5, right = 10, … }``) and Vec2 array values
+    (``{ x, y }``) get reassembled into their Hyprlang string form so
+    downstream consumers see the same shape they would for a parsed
+    ``.conf``.
     """
     for key, value in tree.items():
         if (
@@ -46,7 +49,11 @@ def emit_config_assignments(
             continue
 
         full_key = f"{prefix}{key}" if prefix else key
-        if isinstance(value, dict) and not _looks_like_gradient(value):
+        if (
+            isinstance(value, dict)
+            and not _looks_like_gradient(value)
+            and option_type(hyprlang_option_key(full_key)) != "cssgap"
+        ):
             emit_config_assignments(doc, value, prefix=full_key + ":", source=source)
         else:
             _add_leaf(doc, full_key, value, source=source)
@@ -55,7 +62,11 @@ def emit_config_assignments(
 def _add_leaf(doc: Document, full_key: str, value: Any, *, source: str = "") -> None:
     """Render a leaf value (gradient / list / scalar) to one Assignment line."""
     full_key = hyprlang_option_key(full_key)
-    if isinstance(value, dict) and _looks_like_gradient(value):
+    if isinstance(value, dict) and option_type(full_key) == "cssgap":
+        # Hyprlang separates a gap option's sides with commas.
+        sides = format_gap_for_hyprlang(value).split()
+        _add_assignment(doc, full_key, ",".join(sides), source=source)
+    elif isinstance(value, dict) and _looks_like_gradient(value):
         _add_assignment(doc, full_key, _gradient_to_hyprlang(value), source=source)
     elif isinstance(value, list):
         _add_assignment(doc, full_key, _list_to_hyprlang(value), source=source)
@@ -64,6 +75,8 @@ def _add_leaf(doc: Document, full_key: str, value: Any, *, source: str = "") -> 
 
 
 def _add_assignment(doc: Document, full_key: str, value: str, *, source: str = "") -> None:
+    # Escape a literal ``#`` as Hyprlang's ``##`` — see ``_emit_keyword``.
+    value = escape_hash(value)
     # ``key`` carries the whole colon path, not the leaf: these lines sit at
     # top level with no enclosing section, which is the flat Hyprlang shape
     # (``key == full_key``). A leaf-only key would re-render as a bare

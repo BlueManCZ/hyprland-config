@@ -692,3 +692,115 @@ class TestExecBlocks:
         out = serialize_lua(parse_string("exec = waybar\n"))
         assert "hl.exec_cmd" in out
         assert "hl.dsp.exec_cmd" not in out
+
+
+class TestMonitorShortForms:
+    """``monitor = OUTPUT, VERB, …`` lines that change one field of a rule.
+
+    Hyprland's legacy parser takes ``disable``/``disabled``, ``transform``
+    and ``addreserved`` in place of the mode. ``hl.monitor`` merges into the
+    output's existing rule, so they emit only the field they change.
+    """
+
+    def test_disabled_spelling(self) -> None:
+        out = keyword_to_lua("monitor", "DP-1, disabled")
+        assert "disabled = true," in out
+        assert "mode" not in out
+
+    def test_transform(self) -> None:
+        out = keyword_to_lua("monitor", "DP-1, transform, 1")
+        assert out == 'hl.monitor({\n    output = "DP-1",\n    transform = 1,\n})'
+
+    def test_addreserved_takes_css_order(self) -> None:
+        # Hyprlang lists top, bottom, left, right; the Lua table names them.
+        out = keyword_to_lua("monitor", "DP-1, addreserved, 10, 20, 30, 40")
+        assert "reserved = {" in out
+        assert "top = 10," in out
+        assert "bottom = 20," in out
+        assert "left = 30," in out
+        assert "right = 40," in out
+        assert "disabled" not in out
+
+    def test_malformed_addreserved_is_flagged(self) -> None:
+        out = keyword_to_lua("monitor", "DP-1, addreserved, 10")
+        assert out.startswith("-- malformed monitor:")
+
+    def test_reserved_extra_from_a_lua_read(self) -> None:
+        # A Lua config read back writes ``reserved`` into the line as one
+        # ``T R B L`` value, which goes back out as the table.
+        out = keyword_to_lua("monitor", "DP-1, preferred, auto, 1, reserved, 10 0 0 5")
+        assert "top = 10," in out
+        assert "left = 5," in out
+
+
+class TestMonitorv2Block:
+    def test_block_emits_hl_monitor(self) -> None:
+        src = (
+            "monitorv2 {\n"
+            "    output = DP-1\n"
+            "    mode = 1920x1080@60\n"
+            "    position = 0x0\n"
+            "    scale = 1\n"
+            "    addreserved = 10, 0, 0, 0\n"
+            "}\n"
+        )
+        out = serialize_lua(parse_string(src))
+        assert "hl.config" not in out
+        assert 'output = "DP-1",' in out
+        assert "disabled = false," in out
+        assert 'mode = "1920x1080@60",' in out
+        assert "scale = 1," in out
+        assert "top = 10," in out
+
+    def test_blocks_stay_separate(self) -> None:
+        src = (
+            "monitorv2 {\n    output = DP-1\n    mode = preferred\n}\n"
+            "monitorv2[DP-2] {\n    disabled = 1\n}\n"
+        )
+        out = serialize_lua(parse_string(src))
+        assert out.count("hl.monitor({") == 2
+        assert 'output = "DP-2",\n    disabled = true,' in out
+
+    def test_desc_output_unescapes_hash(self) -> None:
+        out = serialize_lua(parse_string("monitorv2 {\n    output = desc:Dell ##tBwz\n}\n"))
+        assert 'output = "desc:Dell #tBwz",' in out
+
+
+class TestHashEscapes:
+    """Hyprlang reads ``##`` as a literal ``#`` in every value."""
+
+    def test_env(self) -> None:
+        assert 'hl.env("FOO", "a#b")' in serialize_lua(parse_string("env = FOO, a##b\n"))
+
+    def test_exec_once(self) -> None:
+        out = serialize_lua(parse_string("exec-once = notify-send '##1'\n"))
+        assert "hl.exec_cmd(\"notify-send '#1'\")" in out
+
+    def test_workspace_rule_monitor(self) -> None:
+        out = serialize_lua(parse_string("workspace = 1, monitor:desc:Foo ##X\n"))
+        assert 'monitor = "desc:Foo #X",' in out
+
+    def test_windowrule_matcher(self) -> None:
+        out = serialize_lua(parse_string("windowrule = float on, match:title ^(a##b)$\n"))
+        assert 'title = "^(a#b)$",' in out
+
+    def test_option_value(self) -> None:
+        out = serialize_lua(parse_string("misc:swallow_regex = ^(##kitty)$\n"))
+        assert 'swallow_regex = "^(#kitty)$",' in out
+
+    def test_variable_value(self) -> None:
+        out = serialize_lua(parse_string("$tag = a##b\nenv = TAG, $tag\n"))
+        assert 'local var_tag = "a#b"' in out
+
+    def test_live_apply(self) -> None:
+        assert keyword_to_lua("env", "FOO, a##b") == 'hl.env("FOO", "a#b")'
+
+    def test_render_rule_lua(self) -> None:
+        rule = Rule(raw="", kind="windowrule", matchers=[("title", "a##b")], effects=[])
+        assert 'title = "a#b",' in render_rule_lua(rule)
+
+    def test_escaped_double_hash_unescapes_once(self) -> None:
+        # ``####`` is two literal ``#``; a second pass would leave one.
+        assert keyword_to_lua("env", "FOO, a####b") == 'hl.env("FOO", "a##b")'
+        out = serialize_lua(parse_string("windowrule = float on, match:title a####b\n"))
+        assert 'title = "a##b",' in out

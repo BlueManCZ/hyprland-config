@@ -8,7 +8,6 @@ walker and by the single-line public ``emit_keyword_line`` API.
 from typing import Any
 
 from hyprland_config._core._values import parse_hyprlang_bool
-from hyprland_config._hyprlang._parser import unescape_hash
 from hyprland_config._lua._emit._format import (
     INDENT,
     coerce_value,
@@ -17,6 +16,7 @@ from hyprland_config._lua._emit._format import (
     quote_string,
     split_csv,
 )
+from hyprland_config._lua._workspace_rules import parse_gap_for_lua
 
 
 def emit_env(args: str) -> str:
@@ -36,16 +36,18 @@ def emit_monitor(args: str) -> str:
     KEY with no value) is rare but we surface it as a comment-style entry
     so the user can see what got dropped.
 
-    Hyprlang's ``monitor = OUTPUT, disable`` short-form maps to the
-    Lua API's ``disabled = true`` boolean field (the Lua side rejects
-    ``mode = "disable"`` — confirmed against Hyprland 0.55+). A full line
-    conversely emits an explicit ``disabled = false`` — see below.
+    Hyprlang's short forms put a verb where the mode goes:
 
-    A ``desc:`` output can carry a ``#`` (some EDID serials start with one),
-    escaped as ``##`` on the Hyprlang side so it isn't read as a comment.
-    The Lua string holds the literal ``#`` the compositor matches against.
+    - ``OUTPUT, disable`` (or ``disabled``) maps to the Lua API's
+      ``disabled = true`` field (the Lua side rejects ``mode = "disable"``
+      — confirmed against Hyprland 0.55+).
+    - ``OUTPUT, transform, N`` and ``OUTPUT, addreserved, T, B, L, R``
+      change one field of the output's rule. ``hl.monitor`` merges into an
+      existing rule for the same output, so they emit just that field.
+
+    A full line conversely emits an explicit ``disabled = false`` — see below.
     """
-    parts = split_csv(unescape_hash(args))
+    parts = split_csv(args)
     table: dict[str, Any] = {}
     # Always emit ``output``, even when the name field is empty. The catch-all
     # rule ``monitor = , preferred, auto, 1`` (no output name) is common, and
@@ -54,9 +56,20 @@ def emit_monitor(args: str) -> str:
     # ``output = ""`` — the explicit form the compositor accepts.
     if parts:
         table["output"] = parts[0]
-    # Short-form: ``OUTPUT, disable`` (no positional args after).
-    if len(parts) == 2 and parts[1].strip().lower() == "disable":
+    verb = parts[1].strip().lower() if len(parts) >= 2 else ""
+    if verb in ("disable", "disabled"):
         table["disabled"] = True
+        return f"hl.monitor({format_table(table, indent=0)})"
+    if verb == "transform":
+        if len(parts) < 3:
+            return f"-- malformed monitor: {args}"
+        table["transform"] = coerce_value(parts[2])
+        return f"hl.monitor({format_table(table, indent=0)})"
+    if verb == "addreserved":
+        reserved = _reserved_table(parts[2:])
+        if reserved is None:
+            return f"-- malformed monitor: {args}"
+        table["reserved"] = reserved
         return f"hl.monitor({format_table(table, indent=0)})"
     # A full line means "this output, configured and on". Legacy Hyprlang
     # re-enables a previously-disabled output implicitly whenever it sees a full
@@ -78,12 +91,60 @@ def emit_monitor(args: str) -> str:
         key = extras[i].strip()
         value = extras[i + 1].strip()
         if key:
-            table[key] = coerce_value(value)
+            table[key] = _monitor_field_value(key, value)
         i += 2
     if i < len(extras):
         # Dangling odd-length tail — leave a marker so it's not silently dropped.
         table["__unparsed_extra"] = extras[i]
     return f"hl.monitor({format_table(table, indent=0)})"
+
+
+def emit_monitorv2(fields: dict[str, str]) -> str:
+    """A ``monitorv2 { … }`` block's fields → ``hl.monitor({...})``.
+
+    The block names the same rule fields as a ``monitor`` line, one per
+    line. Hyprland builds a fresh rule from each block, so like a full line
+    it emits ``disabled = false`` unless the block disables the output.
+    ``addreserved = T, B, L, R`` becomes the ``reserved`` table.
+    """
+    table: dict[str, Any] = {"output": fields.get("output", "")}
+    table["disabled"] = parse_hyprlang_bool(fields.get("disabled", "false")) is True
+    for key, value in fields.items():
+        if key in ("output", "disabled"):
+            continue
+        if key == "addreserved":
+            reserved = _reserved_table(split_csv(value))
+            table["reserved"] = reserved if reserved is not None else value
+        elif key in ("mode", "position"):
+            table[key] = value
+        else:
+            table[key] = _monitor_field_value(key, value)
+    return f"hl.monitor({format_table(table, indent=0)})"
+
+
+# Lua-only ``hl.monitor`` fields holding a ``{top, right, bottom, left}``
+# table. A Lua config read back writes them into a ``monitor`` line as
+# ``reserved, T R B L``; see :func:`monitor_value`.
+_MONITOR_GAP_FIELDS = frozenset({"reserved", "reserved_area"})
+
+
+def _monitor_field_value(key: str, value: str) -> Any:
+    if key in _MONITOR_GAP_FIELDS:
+        return parse_gap_for_lua(value)
+    return coerce_value(value)
+
+
+def _reserved_table(values: list[str]) -> dict[str, int] | None:
+    """Hyprlang's ``addreserved`` values, ordered top, bottom, left, right, as a Lua table.
+
+    The Lua ``reserved`` field takes CSS order (top, right, bottom, left)
+    by name. ``None`` unless *values* holds four integers.
+    """
+    try:
+        top, bottom, left, right = (int(v) for v in values)
+    except ValueError:
+        return None
+    return {"top": top, "right": right, "bottom": bottom, "left": left}
 
 
 def emit_bezier(args: str) -> str:

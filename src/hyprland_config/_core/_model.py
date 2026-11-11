@@ -224,7 +224,8 @@ class Document:
         self.lua: bool = lua
         # Non-fatal problems hit while evaluating a Lua config: callbacks
         # that raised, modules that failed to load. The document is still
-        # usable, but callers should surface that the read was partial.
+        # usable, but callers should surface that the read was partial, and
+        # :meth:`save` refuses to write it back.
         self.read_warnings: list[str] = []
 
     @property
@@ -737,7 +738,9 @@ class Document:
 
     # -- Persistence --
 
-    def save(self, path: Path | None = None, *, recursive: bool | None = None) -> None:
+    def save(
+        self, path: Path | None = None, *, recursive: bool | None = None, force: bool = False
+    ) -> None:
         """Write the document to disk using atomic write.
 
         recursive defaults to True when sources were followed during parsing.
@@ -747,16 +750,34 @@ class Document:
         (``.lua`` → Lua, ``.conf`` → Hyprlang), and otherwise the format the
         document was loaded from — so a Lua config saves back as Lua, and
         saving to the other suffix converts.
+
+        Raises :class:`~hyprland_config.LuaReaderError` when the document
+        has :attr:`read_warnings` and would write a file: the read stopped
+        early, so the document may hold only part of the config, and
+        writing it would drop the rest from disk. Pass ``force=True`` to
+        write it anyway.
         """
         # Only the document the caller reached for is the entry point, so
         # that is where ``require`` names resolve from for the whole tree.
         config_root = self.path.parent if self.path is not None else None
-        if self._resolve_recursive(recursive):
-            for sub in self._iter_sub_documents():
-                if sub.dirty:
-                    sub._write(sub.path, config_root)
+        subs = (
+            [sub for sub in self._iter_sub_documents() if sub.dirty]
+            if self._resolve_recursive(recursive)
+            else []
+        )
+        write_self = self.dirty or path is not None
+        if self.read_warnings and not force and (subs or write_self):
+            from hyprland_config._lua import LuaReaderError  # circular: _lua needs Document
 
-        if self.dirty or path is not None:
+            raise LuaReaderError(
+                "Refusing to save a config that was only partly read; the errors "
+                "below may have cut it short, and saving would drop the rest "
+                "(pass force=True to save anyway):\n  " + "\n  ".join(self.read_warnings)
+            )
+        for sub in subs:
+            sub._write(sub.path, config_root)
+
+        if write_self:
             self._write(path or self.path, config_root)
 
     def _write(self, target: Path | None, config_root: Path | None) -> None:
