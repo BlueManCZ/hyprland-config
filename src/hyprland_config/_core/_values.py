@@ -39,6 +39,43 @@ def option_type(full_key: str) -> str | None:
     return opt.type if opt is not None else None
 
 
+def lua_option_name(name: str) -> str:
+    """Return Hyprland's Lua spelling of an option name or part of one.
+
+    Hyprland's Lua config manager replaces every ``-`` with ``_``
+    (``luaConfigValueName``), and ``hl.device`` fields follow suit, so
+    ``input:touchpad:tap-to-click`` is ``input.touchpad.tap_to_click`` there.
+    """
+    return name.replace("-", "_")
+
+
+# The schema keys whose Lua spelling differs, by that spelling, so a key read
+# back from Lua can recover its dashes. Few options have one
+# (``input:touchpad:tap-to-click``, ``input-capture:…``), and the rest must
+# keep their underscores, so this can't simply swap the characters back.
+_DASHED_KEYS: dict[str, str] = {
+    lua_option_name(key): key for key in hyprland_schema.OPTIONS_BY_KEY if "-" in key
+}
+_DASHED_DEVICE_FIELDS: dict[str, str] = {
+    lua_option_name(field): field
+    for field in (key.rpartition(":")[2] for key in _DASHED_KEYS.values())
+    if "-" in field
+}
+
+
+def hyprlang_option_key(full_key: str) -> str:
+    """Return the Hyprlang *full_key* for a key read from a Lua config.
+
+    The inverse of :func:`lua_option_name` for options the schema knows.
+    ``device:`` fields are matched by their leaf, since a ``device { … }``
+    block flattens the ``input:touchpad:`` options it overrides.
+    """
+    if full_key.startswith("device:"):
+        field = full_key.removeprefix("device:")
+        return f"device:{_DASHED_DEVICE_FIELDS.get(field, field)}"
+    return _DASHED_KEYS.get(full_key, full_key)
+
+
 def parse_hyprlang_bool(value: object) -> bool | None:
     """Best-effort coerce *value* into a Hyprlang-recognised boolean.
 
