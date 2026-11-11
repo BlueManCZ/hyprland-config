@@ -58,6 +58,7 @@ from hyprland_config._core._model import (
     Source,
     Variable,
 )
+from hyprland_config._core._values import lua_option_name
 from hyprland_config._hyprlang._bind import is_bind_keyword
 from hyprland_config._lua._emit._bind import emit_bind, is_modifier_token
 from hyprland_config._lua._emit._conditional import translate_expression
@@ -724,7 +725,7 @@ def _process_line(line: Line, state: _EmitState) -> None:
         if state.section_stack:
             cur_name, cur_buf = state.section_stack[-1]
             if cur_name == "device" and cur_buf is not None:
-                cur_buf[line.key] = coerce_option_value(line.full_key, value)
+                cur_buf[lua_option_name(line.key)] = coerce_option_value(line.full_key, value)
                 return
             if cur_name == "match" and cur_buf is not None:
                 # Field of a nested ``match { … }`` block — the ``match:``

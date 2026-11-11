@@ -10,6 +10,7 @@ level so the round-trip with the Hyprlang parser is symmetric.
 from typing import Any
 
 from hyprland_config._core._model import Assignment, Document
+from hyprland_config._core._values import hyprlang_option_key
 from hyprland_config._lua._emit._format import DOT_PREFIX_KEYS
 
 
@@ -53,6 +54,7 @@ def emit_config_assignments(
 
 def _add_leaf(doc: Document, full_key: str, value: Any, *, source: str = "") -> None:
     """Render a leaf value (gradient / list / scalar) to one Assignment line."""
+    full_key = hyprlang_option_key(full_key)
     if isinstance(value, dict) and _looks_like_gradient(value):
         _add_assignment(doc, full_key, _gradient_to_hyprlang(value), source=source)
     elif isinstance(value, list):

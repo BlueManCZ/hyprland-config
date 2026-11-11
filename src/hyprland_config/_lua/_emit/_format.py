@@ -16,6 +16,7 @@ from hyprland_config._core._types import Color, Gradient
 from hyprland_config._core._values import (
     FLOAT_LITERAL_RE,
     INT_LITERAL_RE,
+    lua_option_name,
     option_type,
     parse_hyprlang_bool,
 )
@@ -176,9 +177,10 @@ def split_key(full_key: str) -> list[str]:
 
     Both ``:`` (Hyprlang section separator) and ``.`` (sub-prefix convention,
     e.g. ``col.inactive_border``) become nesting boundaries in the Lua table.
-    Empty parts from leading/trailing separators are dropped.
+    Empty parts from leading/trailing separators are dropped, and each part
+    takes its Lua spelling (``tap-to-click`` → ``tap_to_click``).
     """
-    return [part for part in re.split(r"[:.]", full_key) if part]
+    return [lua_option_name(part) for part in re.split(r"[:.]", full_key) if part]
 
 
 def set_nested(tree: dict[str, Any], path: list[str], value: Any) -> None:

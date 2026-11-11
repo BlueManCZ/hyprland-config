@@ -413,9 +413,9 @@ class TestKeyFormatting:
         assert '["end"] = 1,' in out
 
     def test_non_identifier_key_gets_bracketed(self) -> None:
-        doc = parse_string("foo:weird-key = 1\n")
+        doc = parse_string("foo:2fg = 1\n")
         out = serialize_lua(doc)
-        assert '["weird-key"] = 1,' in out
+        assert '["2fg"] = 1,' in out
 
 
 class TestUnsupportedKeywords:
@@ -931,3 +931,29 @@ class TestEmitterFuzz:
     def test_lenient_emit_always_parses(self, text: str) -> None:
         doc = parse_string(text, lenient=True)
         assert_lua_compiles(serialize_lua(doc))
+
+
+class TestDashedOptionNames:
+    """Hyprland's Lua API spells ``-`` in option names as ``_``.
+
+    ``luaConfigValueName`` swaps them when it registers each option, and
+    ``hl.device`` only knows the underscore fields, so a quoted
+    ``["tap-to-click"]`` key fails with "unknown config key" (hyprmod
+    issue 102).
+    """
+
+    def test_live_apply_uses_the_lua_spelling(self) -> None:
+        snippet = keyword_to_lua("input:touchpad:tap-to-click", "false")
+        assert "tap_to_click = false" in snippet
+        assert "tap-to-click" not in snippet
+
+    def test_dashed_section_name(self) -> None:
+        out = serialize_lua(parse_string("input-capture:capture_modifiers = true\n"))
+        assert "input_capture = {" in out
+        assert "capture_modifiers = true," in out
+
+    def test_device_field(self) -> None:
+        doc = parse_string("device {\n    name = touchpad\n    tap-to-click = false\n}\n")
+        out = serialize_lua(doc)
+        assert "tap_to_click = false" in out
+        assert "tap-to-click" not in out

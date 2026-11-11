@@ -184,6 +184,42 @@ class TestEditedAssignments:
         assert serialize_hyprlang(doc) == "device {\n    name = mouse\n    sensitivity = 0.8\n}\n"
 
 
+class TestDashedOptionNames:
+    """Lua spells the dash in an option name as ``_``; reading maps it back."""
+
+    def test_option_gets_its_dashes_back(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.config({ input = { touchpad = { tap_to_click = false, natural_scroll = true } } })",
+        )
+        assert _assignments(load_lua(path)) == {
+            "input:touchpad:tap-to-click": "false",
+            "input:touchpad:natural_scroll": "true",
+        }
+
+    def test_dashed_section_name(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.config({ input_capture = { capture_modifiers = true } })\n")
+        assert _assignments(load_lua(path)) == {"input-capture:capture_modifiers": "true"}
+
+    def test_device_field(self, tmp_path: Path) -> None:
+        path = _write_lua(tmp_path, "hl.device({ name = 'touchpad', tap_to_click = false })\n")
+        doc = load_lua(path)
+        assert "device:tap-to-click" in _assignments(doc)
+        assert serialize_hyprlang(doc) == (
+            "device {\n    name = touchpad\n    tap-to-click = false\n}\n"
+        )
+
+    def test_round_trip_keeps_the_lua_spelling(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path, "hl.config({ input = { touchpad = { tap_to_click = false } } })\n"
+        )
+        doc = load_lua(path)
+        doc.set("input:touchpad:tap-to-click", True)
+        out = serialize_lua(doc)
+        assert "tap_to_click = true" in out
+        assert "tap-to-click" not in out
+
+
 class TestKeywordCalls:
     def test_env(self, tmp_path: Path) -> None:
         path = _write_lua(tmp_path, "hl.env('XCURSOR_SIZE', '24')\n")

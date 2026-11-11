@@ -10,6 +10,7 @@ wrote it.
 from typing import Any
 
 from hyprland_config._core._model import Assignment, Document, Rule, SectionClose, SectionOpen
+from hyprland_config._core._values import hyprlang_option_key
 from hyprland_config._hyprlang._parser import escape_hash
 from hyprland_config._lua._read._config import format_number, scalar_to_hyprlang
 from hyprland_config._lua._workspace_rules import (
@@ -169,15 +170,17 @@ def emit_device(doc: Document, t: dict[str, Any], *, source: str = "") -> None:
     keyword wouldn't work because Hyprlang has no scalar-form ``device``.
     """
     doc.lines.append(SectionOpen(raw="device {\n", name="device", source_name=source))
-    for key in sorted(t):
-        value = t[key]
+    for lua_key in sorted(t):
+        value = t[lua_key]
+        full_key = hyprlang_option_key(f"device:{lua_key}")
+        key = full_key.removeprefix("device:")
         rendered = scalar_to_hyprlang(value)
         doc.lines.append(
             Assignment(
                 raw=f"    {key} = {rendered}\n",
                 key=key,
                 value=rendered,
-                full_key=f"device:{key}",
+                full_key=full_key,
                 source_name=source,
             )
         )
