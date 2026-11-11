@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The `sendshortcut` and `sendkeystate` dispatchers translate to `hl.dsp.send_shortcut` and `hl.dsp.send_key_state`, and read back. They used to land in the manual-conversion TODO block, so migrating a config dropped binds like `bind = SUPER, M, sendshortcut, CTRL SHIFT, M, class:vesktop`. An empty WINDOW field (the active window) becomes an omitted `window`.
+
 ### Changed
 
 - `Document.save()` raises `LuaReaderError` when the document has `read_warnings`. The read stopped early, so saving would drop the rest of the config from disk. Pass `force=True` to save anyway.

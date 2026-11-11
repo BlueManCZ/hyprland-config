@@ -333,6 +333,33 @@ class TestGroupAndPassDispatchers:
     def test_pass_needs_a_window(self) -> None:
         assert emit_keyword_line("bind", "SUPER, p, pass") is None
 
+    def test_sendshortcut(self) -> None:
+        out = serialize_lua(
+            parse_string("bind = SUPER, M, sendshortcut, CTRL SHIFT, M, class:vesktop\n")
+        )
+        assert (
+            'hl.dsp.send_shortcut({ mods = "CTRL SHIFT", key = "M", window = "class:vesktop" })'
+            in out
+        )
+
+    def test_sendshortcut_to_the_active_window(self) -> None:
+        out = serialize_lua(parse_string("bind = SUPER, C, sendshortcut, CTRL, C,\n"))
+        assert 'hl.dsp.send_shortcut({ mods = "CTRL", key = "C" })' in out
+
+    def test_sendshortcut_needs_a_key(self) -> None:
+        assert emit_keyword_line("bind", "SUPER, C, sendshortcut, CTRL") is None
+
+    def test_sendkeystate(self) -> None:
+        out = serialize_lua(
+            parse_string("bind = SUPER, F1, sendkeystate, , F12, down, class:obs\n")
+        )
+        expected = 'mods = "", key = "F12", state = "down", window = "class:obs"'
+        assert f"hl.dsp.send_key_state({{ {expected} }})" in out
+
+    def test_sendkeystate_rejects_unknown_state(self) -> None:
+        line = "SUPER, F1, sendkeystate, , F12, held, class:obs"
+        assert emit_keyword_line("bind", line) is None
+
     def test_swapactiveworkspaces(self) -> None:
         out = serialize_lua(parse_string("bind = SUPER, s, swapactiveworkspaces, DP-1 DP-2\n"))
         assert 'hl.dsp.workspace.swap_monitors({ monitor1 = "DP-1", monitor2 = "DP-2" })' in out

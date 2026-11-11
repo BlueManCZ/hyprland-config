@@ -98,6 +98,8 @@ def dispatcher_to_hyprlang(dispatcher: Any) -> tuple[str, str]:
         if args and isinstance(args[0], dict):
             return ("pass", str(args[0].get("window", "")))
         return ("pass", "")
+    if name in ("send_shortcut", "send_key_state"):
+        return _send_key(name, args[0] if args else None)
     if name == "workspace.swap_monitors":
         return _swap_monitors(args[0] if args else None)
     if name == "group.move_window":
@@ -114,6 +116,22 @@ def dispatcher_to_hyprlang(dispatcher: Any) -> tuple[str, str]:
     # can still display *something* useful and a future revision can
     # extend the table.
     return (name, ", ".join(scalar_to_hyprlang(a) for a in args))
+
+
+def _send_key(name: str, spec: Any) -> tuple[str, str]:
+    """``hl.dsp.send_shortcut`` / ``send_key_state`` → ``sendshortcut`` / ``sendkeystate``.
+
+    Hyprlang always has the trailing WINDOW field; an empty one means the
+    active window.
+    """
+    spec = spec if isinstance(spec, dict) else {}
+    fields = (
+        ["mods", "key", "state", "window"]
+        if name == "send_key_state"
+        else ["mods", "key", "window"]
+    )
+    hyprlang = "sendkeystate" if name == "send_key_state" else "sendshortcut"
+    return (hyprlang, ", ".join(str(spec.get(field, "")) for field in fields).rstrip())
 
 
 def _toggle_to_hyprlang(args: Any, on: str, off: str) -> str:
