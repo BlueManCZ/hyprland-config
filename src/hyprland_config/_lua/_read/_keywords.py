@@ -11,6 +11,7 @@ from typing import Any
 
 from hyprland_config._core._model import Assignment, Document, Rule, SectionClose, SectionOpen
 from hyprland_config._core._values import hyprlang_option_key
+from hyprland_config._hyprlang._parser import escape_hash
 from hyprland_config._lua._read._config import format_number, scalar_to_hyprlang
 from hyprland_config._lua._workspace_rules import (
     LAYOUTOPT_LUA_NAME,
@@ -26,9 +27,12 @@ def monitor_value(t: dict[str, Any]) -> str:
     ``monitor = OUTPUT, disable`` short-form; we round-trip it back to
     the legacy shape so line-oriented consumers see the canonical form
     regardless of which side wrote it.
+
+    A literal ``#`` (in a ``desc:`` output) is escaped as ``##`` so the line
+    stays valid Hyprlang — see :func:`emit_monitor`.
     """
     if t.get("disabled") is True:
-        return f"{t.get('output', '')}, disable"
+        return escape_hash(f"{t.get('output', '')}, disable")
     parts = [
         str(t.get("output", "")),
         str(t.get("mode", "preferred")),
@@ -40,7 +44,7 @@ def monitor_value(t: dict[str, Any]) -> str:
     for key in sorted(extras):
         parts.append(key)
         parts.append(scalar_to_hyprlang(extras[key]))
-    return ", ".join(parts)
+    return escape_hash(", ".join(parts))
 
 
 def bezier_value(name: Any, t: dict[str, Any]) -> str:

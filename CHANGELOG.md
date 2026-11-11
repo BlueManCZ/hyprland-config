@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Options with a dash in their name (`input:touchpad:tap-to-click`, `input:touchpad:tap-and-drag`, the `input-capture:` section) now use Hyprland's Lua spelling (`tap_to_click`) in `hl.config` and `hl.device`. Live-apply failed with `unknown config key`. Reading a Lua config maps them back to the dashed key. https://github.com/BlueManCZ/hyprmod/issues/102
+- A `#` in a `monitor` line's `desc:` output (some EDID serials start with one) is now written to Lua as `#`, not as the Hyprlang escape `##`, which matched no monitor. Reading `hl.monitor` back escapes it again. Other keywords still pass `##` through unchanged. https://github.com/BlueManCZ/hyprland-monitors/issues/3
 
 ## [0.9.20] - 2026-11-10
 

@@ -8,6 +8,7 @@ walker and by the single-line public ``emit_keyword_line`` API.
 from typing import Any
 
 from hyprland_config._core._values import parse_hyprlang_bool
+from hyprland_config._hyprlang._parser import unescape_hash
 from hyprland_config._lua._emit._format import (
     INDENT,
     coerce_value,
@@ -39,8 +40,12 @@ def emit_monitor(args: str) -> str:
     Lua API's ``disabled = true`` boolean field (the Lua side rejects
     ``mode = "disable"`` — confirmed against Hyprland 0.55+). A full line
     conversely emits an explicit ``disabled = false`` — see below.
+
+    A ``desc:`` output can carry a ``#`` (some EDID serials start with one),
+    escaped as ``##`` on the Hyprlang side so it isn't read as a comment.
+    The Lua string holds the literal ``#`` the compositor matches against.
     """
-    parts = split_csv(args)
+    parts = split_csv(unescape_hash(args))
     table: dict[str, Any] = {}
     # Always emit ``output``, even when the name field is empty. The catch-all
     # rule ``monitor = , preferred, auto, 1`` (no output name) is common, and
