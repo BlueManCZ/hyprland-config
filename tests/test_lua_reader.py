@@ -894,6 +894,32 @@ class TestGroupAndPassDispatcherReads:
         )
         assert _keywords(load_lua(path), "bind") == ["SUPER, p, pass, class:^(discord)$"]
 
+    def test_send_shortcut(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.bind('SUPER + m', hl.dsp.send_shortcut("
+            "{ mods = 'CTRL SHIFT', key = 'M', window = 'class:vesktop' }))",
+        )
+        assert _keywords(load_lua(path), "bind") == [
+            "SUPER, m, sendshortcut, CTRL SHIFT, M, class:vesktop"
+        ]
+
+    def test_send_shortcut_to_the_active_window(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path, "hl.bind('SUPER + c', hl.dsp.send_shortcut({ mods = 'CTRL', key = 'C' }))"
+        )
+        assert _keywords(load_lua(path), "bind") == ["SUPER, c, sendshortcut, CTRL, C,"]
+
+    def test_send_key_state(self, tmp_path: Path) -> None:
+        path = _write_lua(
+            tmp_path,
+            "hl.bind('SUPER + F1', hl.dsp.send_key_state("
+            "{ mods = '', key = 'F12', state = 'down', window = 'class:obs' }))",
+        )
+        assert _keywords(load_lua(path), "bind") == [
+            "SUPER, F1, sendkeystate, , F12, down, class:obs"
+        ]
+
     def test_swapactiveworkspaces(self, tmp_path: Path) -> None:
         path = _write_lua(
             tmp_path,

@@ -328,6 +328,39 @@ def _dispatch_pass(arg: str) -> str | None:
     return f"hl.dsp.pass({{ window = {quote_string(window)} }})"
 
 
+def _dispatch_sendshortcut(arg: str) -> str | None:
+    """``sendshortcut, MODS, KEY, WINDOW`` → ``hl.dsp.send_shortcut({...})``.
+
+    An empty WINDOW targets the active window, which on the Lua side is an
+    omitted ``window``. The bind parser drops the trailing comma of
+    ``MODS, KEY,``, so the WINDOW field may be missing entirely.
+    """
+    parts = [part.strip() for part in arg.split(",", 2)]
+    if len(parts) < 2 or not parts[1]:
+        return None
+    mods, key, window = (*parts, "")[:3]
+    return _send_key("send_shortcut", [("mods", mods), ("key", key)], window)
+
+
+def _dispatch_sendkeystate(arg: str) -> str | None:
+    """``sendkeystate, MODS, KEY, STATE, WINDOW`` → ``hl.dsp.send_key_state({...})``.
+
+    WINDOW works as for :func:`_dispatch_sendshortcut`.
+    """
+    parts = [part.strip() for part in arg.split(",", 3)]
+    if len(parts) < 3 or not parts[1] or parts[2] not in ("down", "repeat", "up"):
+        return None
+    mods, key, state, window = (*parts, "")[:4]
+    return _send_key("send_key_state", [("mods", mods), ("key", key), ("state", state)], window)
+
+
+def _send_key(function: str, fields: list[tuple[str, str]], window: str) -> str:
+    if window:
+        fields = [*fields, ("window", window)]
+    table = ", ".join(f"{name} = {quote_string(value)}" for name, value in fields)
+    return f"hl.dsp.{function}({{ {table} }})"
+
+
 def _dispatch_setprop(arg: str) -> str | None:
     """``setprop, [WINDOW] PROP VALUE`` → ``hl.dsp.window.set_prop({...})``.
 
@@ -507,6 +540,8 @@ _DISPATCHERS: dict[str, Callable[[str, bool], "str | None"]] = {
     "focusworkspaceoncurrentmonitor": lambda arg, _: _dispatch_focusworkspaceoncurrentmonitor(arg),
     "swapactiveworkspaces": lambda arg, _: _dispatch_swapactiveworkspaces(arg),
     "pass": lambda arg, _: _dispatch_pass(arg),
+    "sendshortcut": lambda arg, _: _dispatch_sendshortcut(arg),
+    "sendkeystate": lambda arg, _: _dispatch_sendkeystate(arg),
     "fullscreen": lambda arg, _: _dispatch_fullscreen(arg),
     "cyclenext": lambda arg, _: _dispatch_cyclenext(arg),
     "swapnext": lambda arg, _: _dispatch_swapnext(arg),
