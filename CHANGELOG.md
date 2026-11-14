@@ -5,11 +5,11 @@ All notable changes to hyprland-config will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.21] - 2026-11-14
 
 ### Added
 
-- The `sendshortcut` and `sendkeystate` dispatchers translate to `hl.dsp.send_shortcut` and `hl.dsp.send_key_state`, and read back. They used to land in the manual-conversion TODO block, so migrating a config dropped binds like `bind = SUPER, M, sendshortcut, CTRL SHIFT, M, class:vesktop`. An empty WINDOW field (the active window) becomes an omitted `window`.
+- The `sendshortcut` and `sendkeystate` dispatchers translate to `hl.dsp.send_shortcut` and `hl.dsp.send_key_state`, and read back. They used to land in the manual-conversion block, so migrating a config dropped binds like `bind = SUPER, M, sendshortcut, CTRL SHIFT, M, class:vesktop`.
 
 ### Changed
 
@@ -461,6 +461,8 @@ Initial release - round-trip parser and editor for Hyprland configuration files.
 - Dirty tracking so `save()` only writes files that changed
 - `ParseError` with file name and line number on malformed input
 
+[0.9.21]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.21
+[0.9.20]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.20
 [0.9.19]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.19
 [0.9.18]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.18
 [0.9.17]: https://github.com/BlueManCZ/hyprland-config/releases/tag/v0.9.17
